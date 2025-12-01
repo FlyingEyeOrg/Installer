@@ -12,6 +12,13 @@
                 "CMAKE_CXX_FLAGS": "-fexec-charset=gbk -finput-charset=utf-8",
                 "CMAKE_C_FLAGS": "-fexec-charset=gbk -finput-charset=utf-8"
             }
+        },
+        {
+            "name": "release",
+            "inherits": "vcpkg",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
         }
     ]
 }
