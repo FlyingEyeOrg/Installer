@@ -9,8 +9,9 @@
                 "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
                 "VCPKG_TARGET_TRIPLET": "x86-mingw-static",
                 "CMAKE_BUILD_TYPE": "Debug",
-                "CMAKE_CXX_FLAGS": "-fexec-charset=gbk -finput-charset=utf-8",
-                "CMAKE_C_FLAGS": "-fexec-charset=gbk -finput-charset=utf-8"
+                "CMAKE_CXX_FLAGS": "-fexec-charset=gbk -finput-charset=utf-8 -DUNICODE -D_UNICODE",
+                "CMAKE_C_FLAGS": "-fexec-charset=gbk -finput-charset=utf-8 -DUNICODE -D_UNICODE",
+                "CMAKE_EXE_LINKER_FLAGS": "-municode"
             }
         },
         {
