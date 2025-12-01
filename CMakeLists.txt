@@ -10,10 +10,6 @@ file(GLOB_RECURSE CPP_FILES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
 message(STATUS "Found CPP files: ${CPP_FILES}")
 
 # 定义可执行文件
-add_executable(${CMAKE_PROJECT_NAME} ${CPP_FILES})
-
-# target_link_options(${PROJECT_NAME} PRIVATE -municode)
+add_executable(${CMAKE_PROJECT_NAME} WIN32 ${CPP_FILES})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE fmt::fmt)
-
-# target_compile_definitions(${PROJECT_NAME} PRIVATE UNICODE _UNICODE)
