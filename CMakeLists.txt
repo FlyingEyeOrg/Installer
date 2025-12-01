@@ -20,4 +20,11 @@ else()
     add_executable(${PROJECT_NAME} WIN32 ${CPP_FILES})
 endif()
 
-target_link_libraries(${PROJECT_NAME} PRIVATE fmt::fmt)
+# 链接必要的 Windows 库
+target_link_libraries(${PROJECT_NAME} PRIVATE 
+    fmt::fmt
+    comctl32      # 通用控件库
+    user32        # 用户界面函数
+    gdi32         # 图形设备接口
+    kernel32      # 核心系统函数
+)
