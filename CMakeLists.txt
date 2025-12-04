@@ -4,6 +4,30 @@ project(installer)
 
 find_package(fmt CONFIG REQUIRED)
 
+# 查找 objcopy
+find_program(OBJCOPY objcopy)
+
+# 要嵌入的文件
+set(EMBED_FILES 
+    src/assets/helloworld.txt
+)
+
+# 为每个文件生成 .o 文件
+foreach(file ${EMBED_FILES})
+    get_filename_component(name ${file} NAME_WE)
+    set(obj_file ${CMAKE_CURRENT_BINARY_DIR}/${name}.o)  
+    
+    add_custom_command(
+        OUTPUT ${obj_file}
+        COMMAND ${OBJCOPY} -I binary -O pe-x86-64 -B i386:x86-64
+                ${file} ${obj_file}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} 
+        DEPENDS ${file}
+        COMMENT "嵌入文件: ${file} -> ${obj_file}"
+    )
+    list(APPEND EMBED_OBJS ${obj_file})
+endforeach()
+
 file(GLOB_RECURSE CPP_FILES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
 
 # 打印文件列表（调试用）
@@ -13,11 +37,11 @@ message(STATUS "Found CPP files: ${CPP_FILES}")
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     message(STATUS "构建类型: Debug - 启用控制台窗口")
     # Debug 版本：显示控制台窗口（便于调试输出）
-    add_executable(${PROJECT_NAME} ${CPP_FILES})
+    add_executable(${PROJECT_NAME} ${CPP_FILES} ${EMBED_OBJS})
 else()
     message(STATUS "构建类型: ${CMAKE_BUILD_TYPE} - 禁用控制台窗口")
     # Release 版本：纯 GUI 应用程序
-    add_executable(${PROJECT_NAME} WIN32 ${CPP_FILES})
+    add_executable(${PROJECT_NAME} WIN32 ${CPP_FILES} ${EMBED_OBJS})
 endif()
 
 # 链接必要的 Windows 库
