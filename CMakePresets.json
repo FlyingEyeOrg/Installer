@@ -3,7 +3,7 @@
     "configurePresets": [
         {
             "name": "vcpkg",
-            "displayName": "Windows MSVC",
+            "displayName": "Windows Ninja",
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/build",
             "cacheVariables": {
