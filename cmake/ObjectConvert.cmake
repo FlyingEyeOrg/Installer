@@ -35,7 +35,7 @@ function(convert_file_to_obj OUTPUT_VAR)
         
         # 在构建目录中生成对应的目标文件名
         # 例如：${CMAKE_CURRENT_BINARY_DIR}/icon.o
-        set(obj_file ${CMAKE_CURRENT_BINARY_DIR}/${name}.o)
+        set(obj_file ${CMAKE_CURRENT_BINARY_DIR}/obj/${name}.o)
         
         # 添加自定义构建命令，用于生成目标文件
         add_custom_command(
