@@ -38,12 +38,6 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     message(STATUS "构建类型: Debug - 启用控制台窗口")
     # Debug 版本：显示控制台窗口（便于调试输出）
     add_executable(${PROJECT_NAME} ${CPP_FILES} ${EMBED_OBJS})
-
-    if(MSVC)
-        # 明确设置控制台程序
-        set_target_properties(${PROJECT_NAME} PROPERTIES WIN32_EXECUTABLE FALSE)
-        target_link_options(${PROJECT_NAME} PRIVATE "/SUBSYSTEM:CONSOLE")
-    endif()
 else()
     message(STATUS "构建类型: ${CMAKE_BUILD_TYPE} - 禁用控制台窗口")
     # Release 版本：纯 GUI 应用程序
