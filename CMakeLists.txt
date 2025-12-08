@@ -38,3 +38,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     gdi32         # 图形设备接口
     kernel32      # 核心系统函数
 )
+
+# 包含头文件目录
+target_include_directories(${PROJECT_NAME} PUBLIC 
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/include
+)
