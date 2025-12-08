@@ -17,10 +17,10 @@ extern "C"
     extern const char _binary_src_assets_helloworld_txt_end[];
 }
 
-int wmain()
+int main()
 {
     MessageBoxA(nullptr, "Hello", "Hello", MB_OK);
-    MessageBox(nullptr, L"你好", L"你好", MB_OK);
+    MessageBoxW(nullptr, L"你好", L"你好", MB_OK);
 
     // 计算数据大小
     size_t size = _binary_src_assets_helloworld_txt_end -
@@ -31,8 +31,6 @@ int wmain()
     // 直接使用数据
     std::string content(_binary_src_assets_helloworld_txt_start, size);
     fmt::print(content);
-
-    MessageBoxA(nullptr, content.c_str(), "提示", MB_OK);
 
     return 0;
 }
