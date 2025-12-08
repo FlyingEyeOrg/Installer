@@ -2,32 +2,18 @@ cmake_minimum_required(VERSION 3.30)
 
 project(installer)
 
+# 包含自定义模块
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+include(ObjectConvert)
+
 find_package(fmt CONFIG REQUIRED)
 
-# 查找 objcopy
-find_program(OBJCOPY objcopy)
-
-# 要嵌入的文件
-set(EMBED_FILES 
+convert_file_to_obj(EMBED_OBJS 
     src/assets/helloworld.txt
+    src/assets/app.ico
 )
 
-# 为每个文件生成 .o 文件
-foreach(file ${EMBED_FILES})
-    get_filename_component(name ${file} NAME_WE)
-    set(obj_file ${CMAKE_CURRENT_BINARY_DIR}/${name}.o)  
-    
-    add_custom_command(
-        OUTPUT ${obj_file}
-        COMMAND ${OBJCOPY} -I binary -O pe-x86-64 -B i386:x86-64
-                ${file} ${obj_file}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} 
-        DEPENDS ${file}
-        COMMENT "嵌入文件: ${file} -> ${obj_file}"
-    )
-    list(APPEND EMBED_OBJS ${obj_file})
-endforeach()
-
+# 包含所有源代码 CPP 文件
 file(GLOB_RECURSE CPP_FILES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
 
 # 打印文件列表（调试用）
