@@ -7,6 +7,7 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 include(ObjectConvert)
 
 find_package(fmt CONFIG REQUIRED)
+find_package(zstd CONFIG REQUIRED)
 
 convert_file_to_obj(EMBED_OBJS 
     src/assets/helloworld.txt
@@ -35,6 +36,7 @@ endif()
 # 链接必要的 Windows 库
 target_link_libraries(${PROJECT_NAME} PRIVATE 
     fmt::fmt-header-only
+    zstd::libzstd
     comctl32      # 通用控件库
     user32        # 用户界面函数
     gdi32         # 图形设备接口
