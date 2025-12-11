@@ -1,2 +1,3 @@
-Hello world!
-你好
+
+Hello
+ENd1
