@@ -5,14 +5,13 @@
 #include <string>
 #include <vector>
 
-
 /// @brief 字符串转换器
-class StringConvertor {
+class string_convertor {
    public:
     /// @brief 将 UTF8 字符串转换成 GBK 字符串
     /// @param utf8_str 需要转换的 UTF8 字符串
     /// @return 返回 GBK 类型的字符串
-    static std::string UTF8ToGBK(const std::string& utf8_str) {
+    static std::string utf8_to_gbk(const std::string& utf8_str) {
         int len =
             MultiByteToWideChar(CP_UTF8, 0, utf8_str.c_str(), -1, NULL, 0);
         wchar_t* gbk_str = new wchar_t[len];
@@ -31,7 +30,7 @@ class StringConvertor {
     /// @brief 将宽字符（UTF-16/Unicode）转 GBK
     /// @param wstr 宽字符字符串
     /// @return 返回 GBK 字符串
-    static std::string WStringToGBK(const std::wstring& wstr) {
+    static std::string wstring_to_gbk(const std::wstring& wstr) {
         if (wstr.empty()) return "";
 
         // 获取需要的缓冲区大小
@@ -69,7 +68,7 @@ class StringConvertor {
     /// @brief 将 GBK 字符串转换成宽字符（UTF-16/Unicode）
     /// @param gbk_str 需要转换的 GBK 字符串
     /// @return 返回宽字符字符串
-    static std::wstring GBKToWString(const std::string& gbk_str) {
+    static std::wstring gbk_to_wstring(const std::string& gbk_str) {
         if (gbk_str.empty()) return L"";
 
         // 获取需要的缓冲区大小
@@ -105,7 +104,7 @@ class StringConvertor {
     /// @brief 将宽字符（UTF-16/Unicode）转换成 UTF8 字符串
     /// @param wstr 宽字符字符串
     /// @return 返回 UTF8 字符串
-    static std::string WStringToUTF8(const std::wstring& wstr) {
+    static std::string wstring_to_utf8(const std::wstring& wstr) {
         if (wstr.empty()) return "";
 
         // 获取需要的缓冲区大小
@@ -142,7 +141,7 @@ class StringConvertor {
     /// @brief 将 UTF8 字符串转换成宽字符（UTF-16/Unicode）
     /// @param utf8_str UTF8 字符串
     /// @return 返回宽字符字符串
-    static std::wstring UTF8ToWString(const std::string& utf8_str) {
+    static std::wstring utf8_to_wstring(const std::string& utf8_str) {
         if (utf8_str.empty()) return L"";
 
         // 获取需要的缓冲区大小

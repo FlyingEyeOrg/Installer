@@ -30,7 +30,7 @@ class TarArchive {
         }
 
         int res =
-            mtar_open(&m_tar, StringConvertor::UTF8ToGBK(path.string()).c_str(),
+            mtar_open(&m_tar, string_convertor::utf8_to_gbk(path.string()).c_str(),
                       mode_str);
         if (res != MTAR_ESUCCESS) {
             throw std::runtime_error(fmt::format(
