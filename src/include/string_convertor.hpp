@@ -8,6 +8,56 @@
 /// @brief 字符串转换器
 class string_convertor {
    public:
+    /// @brief 将 GBK 字符串转换成 UTF8 字符串
+    /// @param gbk_str 需要转换的 GBK 字符串
+    /// @return 返回 UTF8 类型的字符串
+    static std::string gbk_to_utf8(const std::string& gbk_str) {
+        // Step 1: GBK (CP_ACP) → UTF-16
+        int wlen = MultiByteToWideChar(
+            CP_ACP,           // 当前 ANSI 代码页（中文 Windows 是 GBK）
+            0,                // 标志位
+            gbk_str.c_str(),  // 输入 GBK 字符串
+            -1,               // 自动计算长度（包括 null 终止符）
+            NULL,             // 输出缓冲区（NULL 获取所需大小）
+            0                 // 缓冲区大小
+        );
+
+        if (wlen <= 0) {
+            // 转换失败，返回空字符串或原始字符串
+            return "";
+        }
+
+        wchar_t* wstr = new wchar_t[wlen];
+        MultiByteToWideChar(CP_ACP, 0, gbk_str.c_str(), -1, wstr, wlen);
+
+        // Step 2: UTF-16 → UTF-8
+        int ulen = WideCharToMultiByte(CP_UTF8,  // 目标编码：UTF-8
+                                       0,        // 标志位
+                                       wstr,     // 输入 UTF-16 字符串
+                                       -1,       // 自动计算长度
+                                       NULL,  // 输出缓冲区（NULL 获取所需大小）
+                                       0,     // 缓冲区大小
+                                       NULL,  // 默认字符（转换失败时使用）
+                                       NULL   // 是否使用了默认字符
+        );
+
+        if (ulen <= 0) {
+            delete[] wstr;
+            return "";
+        }
+
+        char* utf8_str = new char[ulen];
+        WideCharToMultiByte(CP_UTF8, 0, wstr, -1, utf8_str, ulen, NULL, NULL);
+
+        std::string result(utf8_str);
+
+        // 清理内存
+        delete[] wstr;
+        delete[] utf8_str;
+
+        return result;
+    }
+
     /// @brief 将 UTF8 字符串转换成 GBK 字符串
     /// @param utf8_str 需要转换的 UTF8 字符串
     /// @return 返回 GBK 类型的字符串
