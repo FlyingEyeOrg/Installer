@@ -1,21 +1,22 @@
 #pragma once
 
 #include <span>
-#include <string_view>
 #include <string>
+#include <string_view>
+
 
 // 主模板声明（放在头文件中）
 template <typename Tag>
-class EmbeddedResource {
+class embedded_resource {
     // 主模板不实现，强制特化
 };
 
 // 定义资源特化的宏
 #define DEFINE_EMBEDDED_RESOURCE_TEMPLATE(resource_name)                    \
     template <>                                                             \
-    class EmbeddedResource<struct resource_name##_tag> {                    \
+    class embedded_resource<struct resource_name##_tag> {                   \
        public:                                                              \
-        EmbeddedResource() = delete;                                        \
+        embedded_resource() = delete;                                       \
                                                                             \
         /* 获取资源数据 */                                                  \
         static constexpr std::string_view data() {                          \
@@ -53,7 +54,7 @@ class EmbeddedResource {
         }                                                                   \
     };                                                                      \
     /* 创建类型别名 */                                                      \
-    using resource_name##_resource = EmbeddedResource<resource_name##_tag>;
+    using resource_name##_resource = embedded_resource<resource_name##_tag>;
 
 #ifdef CMAKE_SOURCE_DIR_UNIX_PATH
 #define EMBED_UNIX_PATH(resource_name, unix_file_path)                     \
