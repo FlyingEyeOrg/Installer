@@ -2,6 +2,7 @@
 
 #include <span>
 #include <string_view>
+#include <string>
 
 // 主模板声明（放在头文件中）
 template <typename Tag>
@@ -17,29 +18,29 @@ class EmbeddedResource {
         EmbeddedResource() = delete;                                        \
                                                                             \
         /* 获取资源数据 */                                                  \
-        static constexpr std::string_view get_data() {                      \
+        static constexpr std::string_view data() {                          \
             return std::string_view(binary_##resource_name##_start,         \
                                     binary_##resource_name##_size);         \
         }                                                                   \
                                                                             \
         /* 获取资源大小 */                                                  \
-        static constexpr std::size_t get_size() {                           \
+        static constexpr std::size_t size() {                               \
             return static_cast<std::size_t>(binary_##resource_name##_size); \
         }                                                                   \
                                                                             \
         /* 获取字节数组视图 */                                              \
-        static std::span<const std::byte> get_bytes() {                     \
+        static std::span<const std::byte> bytes() {                         \
             return std::span<const std::byte>(                              \
                 reinterpret_cast<const std::byte*>(                         \
                     binary_##resource_name##_start),                        \
-                get_size());                                                \
+                size());                                                    \
         }                                                                   \
                                                                             \
         /* 检查资源是否为空 */                                              \
-        static constexpr bool is_empty() { return get_size() == 0; }        \
+        static constexpr bool is_empty() { return size() == 0; }            \
                                                                             \
         /* 转换为字符串（如果资源是文本） */                                \
-        static std::string to_string() { return std::string(get_data()); }  \
+        static std::string to_string() { return std::string(data()); }      \
                                                                             \
         /* 获取开始指针 */                                                  \
         static constexpr const char* begin() {                              \
