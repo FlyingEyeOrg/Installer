@@ -4,7 +4,6 @@
 #include <string>
 #include <string_view>
 
-
 // 主模板声明（放在头文件中）
 template <typename Tag>
 class embedded_resource {
