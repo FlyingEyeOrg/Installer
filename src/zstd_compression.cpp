@@ -4,7 +4,7 @@
 
 #include <span>
 
-std::optional<std::vector<uint8_t>> zstd_compression::decompress(
+std::optional<std::vector<std::byte>> zstd_compression::decompress(
     const std::span<const std::byte> data) {
     const auto buffer_size = ZSTD_getFrameContentSize(data.data(), data.size());
 
@@ -14,7 +14,7 @@ std::optional<std::vector<uint8_t>> zstd_compression::decompress(
         return std::nullopt;  // 不是有效的 ZSTD 数据
     }
 
-    std::vector<std::uint8_t> decompressed_buffer(buffer_size);
+    std::vector<std::byte> decompressed_buffer(buffer_size);
 
     const auto decompressed_size = ZSTD_decompress(
         decompressed_buffer.data(), buffer_size, data.data(), data.size());
@@ -30,7 +30,7 @@ std::optional<std::vector<uint8_t>> zstd_compression::decompress(
     return decompressed_buffer;
 }
 
-std::optional<std::vector<uint8_t>> zstd_compression::compress(
+std::optional<std::vector<std::byte>> zstd_compression::compress(
     const std::span<const std::byte> data) {
     if (data.empty()) {
         // 或返回空向量
@@ -44,7 +44,7 @@ std::optional<std::vector<uint8_t>> zstd_compression::compress(
         return std::nullopt;
     }
 
-    std::vector<std::uint8_t> compressed_buffer(buffer_size);
+    std::vector<std::byte> compressed_buffer(buffer_size);
 
     const size_t compressed_size =
         ZSTD_compress(compressed_buffer.data(), buffer_size, data.data(),
