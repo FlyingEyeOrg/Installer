@@ -2,362 +2,428 @@
 
 #include <algorithm>
 #include <cstring>
-#include <stdexcept>
 
-// chunk_node 构造函数实现
-memory_stream::chunk_node::chunk_node(size_type capacity)
-    : chunk(capacity), next(nullptr) {}
+// --- chunk_node 实现 ---
+memory_stream::chunk_node::chunk_node(size_type chunk_size)
+    : chunk(chunk_size) {}
 
-// --- iterator 实现 ---
-bool memory_stream::iterator::operator==(const iterator& other) const {
-    return node == other.node && pos_in_node == other.pos_in_node;
-}
+// --- memory_stream 实现 ---
 
-bool memory_stream::iterator::operator!=(const iterator& other) const {
-    return !(*this == other);
-}
-
-memory_stream::iterator& memory_stream::iterator::operator++() {
-    if (node) {
-        ++pos_in_node;
-        if (pos_in_node >= node->chunk.size()) {
-            node = node->next.get();
-            pos_in_node = 0;
-        }
-    }
-    return *this;
-}
-
-memory_stream::iterator memory_stream::iterator::operator++(int) {
-    iterator temp = *this;
-    ++(*this);
-    return temp;
-}
-
-memory_stream::value_type memory_stream::iterator::operator*() const {
-    if (!node || pos_in_node >= node->chunk.size()) {
-        throw std::out_of_range("Invalid iterator dereference");
-    }
-    return node->chunk[pos_in_node];
-}
-
-// --- const_iterator 实现 ---
-bool memory_stream::const_iterator::operator==(
-    const const_iterator& other) const {
-    return node == other.node && pos_in_node == other.pos_in_node;
-}
-
-bool memory_stream::const_iterator::operator!=(
-    const const_iterator& other) const {
-    return !(*this == other);
-}
-
-memory_stream::const_iterator& memory_stream::const_iterator::operator++() {
-    if (node) {
-        ++pos_in_node;
-        if (pos_in_node >= node->chunk.size()) {
-            node = node->next.get();
-            pos_in_node = 0;
-        }
-    }
-    return *this;
-}
-
-memory_stream::const_iterator memory_stream::const_iterator::operator++(int) {
-    const_iterator temp = *this;
-    ++(*this);
-    return temp;
-}
-
-memory_stream::value_type memory_stream::const_iterator::operator*() const {
-    if (!node || pos_in_node >= node->chunk.size()) {
-        throw std::out_of_range("Invalid iterator dereference");
-    }
-    return node->chunk[pos_in_node];
-}
-
-// --- memory_stream 构造函数 ---
-memory_stream::memory_stream(size_type chunk_capacity)
-    : chunk_capacity_(chunk_capacity) {}
-
+// 构造函数
 memory_stream::memory_stream(chunk_size_type chunk_size)
     : chunk_capacity_(static_cast<size_type>(chunk_size)) {}
+
+memory_stream::memory_stream(size_type chunk_capacity)
+    : chunk_capacity_(chunk_capacity) {}
 
 // 移动构造
 memory_stream::memory_stream(memory_stream&& other) noexcept
     : head_(std::move(other.head_)),
-      tail_(other.tail_),
-      current_read_node_(other.current_read_node_),
-      current_read_pos_(other.current_read_pos_),
+      tail_(std::move(other.tail_)),
       total_size_(other.total_size_),
-      chunk_capacity_(other.chunk_capacity_) {
-    other.tail_ = nullptr;
-    other.current_read_node_ = nullptr;
-    other.current_read_pos_ = 0;
+      read_pos_(other.read_pos_),
+      chunk_capacity_(other.chunk_capacity_),
+      chunk_count_(other.chunk_count_),
+      read_chunk_(std::move(other.read_chunk_)),
+      read_offset_in_chunk_(other.read_offset_in_chunk_) {
     other.total_size_ = 0;
+    other.read_pos_ = 0;
+    other.chunk_capacity_ = 0;
+    other.chunk_count_ = 0;
+    other.read_offset_in_chunk_ = 0;
 }
 
 // 移动赋值
 memory_stream& memory_stream::operator=(memory_stream&& other) noexcept {
     if (this != &other) {
-        clear();
-
         head_ = std::move(other.head_);
-        tail_ = other.tail_;
-        current_read_node_ = other.current_read_node_;
-        current_read_pos_ = other.current_read_pos_;
+        tail_ = std::move(other.tail_);
         total_size_ = other.total_size_;
+        read_pos_ = other.read_pos_;
         chunk_capacity_ = other.chunk_capacity_;
+        chunk_count_ = other.chunk_count_;
+        read_chunk_ = std::move(other.read_chunk_);
+        read_offset_in_chunk_ = other.read_offset_in_chunk_;
 
-        other.tail_ = nullptr;
-        other.current_read_node_ = nullptr;
-        other.current_read_pos_ = 0;
         other.total_size_ = 0;
+        other.read_pos_ = 0;
+        other.chunk_capacity_ = 0;
+        other.chunk_count_ = 0;
+        other.read_offset_in_chunk_ = 0;
     }
     return *this;
 }
 
-// 析构函数
-memory_stream::~memory_stream() = default;
+// --- 私有辅助方法 ---
 
-// --- 主要操作 ---
-memory_stream::size_type memory_stream::write(const value_type* data,
-                                              size_type count) {
-    if (!data || count == 0) {
+// 创建新的chunk节点
+void memory_stream::create_new_chunk() {
+    auto new_node = std::make_shared<chunk_node>(chunk_capacity_);
+
+    if (tail_ == nullptr) {
+        // 第一个节点
+        head_ = new_node;
+        tail_ = new_node;
+        new_node->set_global_start(0);
+    } else {
+        // 添加到链表末尾
+        new_node->set_global_start(total_size_);
+        tail_->next = new_node;
+        tail_ = new_node;
+    }
+
+    chunk_count_++;
+}
+
+// 查找包含指定位置的chunk及其偏移量
+std::pair<std::shared_ptr<memory_stream::chunk_node>, memory_stream::size_type>
+memory_stream::find_chunk_with_offset(size_type pos) const {
+    if (pos >= total_size_ || head_ == nullptr) {
+        return {nullptr, 0};
+    }
+
+    // 如果读取缓存有效，先检查缓存
+    if (read_chunk_ && pos >= read_chunk_->global_start) {
+        size_type chunk_end =
+            read_chunk_->global_start + read_chunk_->chunk.size();
+        if (pos < chunk_end) {
+            return {read_chunk_, pos - read_chunk_->global_start};
+        }
+
+        // 检查下一个chunk
+        if (read_chunk_->next && pos >= read_chunk_->next->global_start) {
+            auto next = read_chunk_->next;
+            size_type next_end = next->global_start + next->chunk.size();
+            if (pos < next_end) {
+                return {next, pos - next->global_start};
+            }
+        }
+    }
+
+    // 从头开始遍历
+    std::shared_ptr<chunk_node> current = head_;
+    while (current != nullptr) {
+        size_type chunk_size = current->chunk.size();
+        if (pos < current->global_start + chunk_size) {
+            return {current, pos - current->global_start};
+        }
+        current = current->next;
+    }
+
+    return {nullptr, 0};
+}
+
+// 更新读取位置缓存
+void memory_stream::update_read_cache() {
+    if (read_pos_ >= total_size_) {
+        read_chunk_ = nullptr;
+        read_offset_in_chunk_ = 0;
+        return;
+    }
+
+    auto [chunk, offset] = find_chunk_with_offset(read_pos_);
+    read_chunk_ = chunk;
+    read_offset_in_chunk_ = offset;
+}
+
+// 从指定chunk和偏移量开始读取
+memory_stream::size_type memory_stream::read_from_chunk(
+    std::shared_ptr<chunk_node> start_chunk, size_type offset_in_chunk,
+    value_type* buffer, size_type count) const {
+    if (start_chunk == nullptr || buffer == nullptr || count == 0) {
         return 0;
     }
 
-    size_type bytes_written = 0;
-    const value_type* src = data;
+    size_type read_total = 0;
+    value_type* current_buffer = buffer;
+    size_type remaining = count;
+    std::shared_ptr<chunk_node> current = start_chunk;
+    size_type offset = offset_in_chunk;
 
-    while (bytes_written < count) {
-        if (!ensure_write_block()) {
+    while (remaining > 0 && current != nullptr) {
+        size_type chunk_size = current->chunk.size();
+        if (offset >= chunk_size) {
+            // 应该不会发生，但安全起见
             break;
         }
 
-        size_type write_size =
-            tail_->chunk.write(src + bytes_written, count - bytes_written);
-        bytes_written += write_size;
-        total_size_ += write_size;
+        size_type chunk_available = chunk_size - offset;
+        size_type to_read_this_chunk =
+            (remaining < chunk_available) ? remaining : chunk_available;
 
-        if (tail_->chunk.full() && bytes_written < count) {
-            add_new_chunk();
+        if (to_read_this_chunk > 0) {
+            size_type actually_read = current->chunk.peek_at(
+                offset, current_buffer, to_read_this_chunk);
+
+            if (actually_read > 0) {
+                read_total += actually_read;
+                remaining -= actually_read;
+                current_buffer += actually_read;
+                offset = 0;  // 后续chunk从0开始读取
+                current = current->next;
+            } else {
+                break;
+            }
+        } else {
+            break;
         }
     }
 
-    return bytes_written;
+    return read_total;
 }
 
+// --- 写入操作 ---
+
+// 写入数据
+memory_stream::size_type memory_stream::write(const value_type* data,
+                                              size_type count) {
+    if (count == 0 || data == nullptr) {
+        return 0;
+    }
+
+    size_type written = 0;
+    const value_type* current_data = data;
+    size_type remaining = count;
+
+    while (remaining > 0) {
+        if (tail_ == nullptr || tail_->chunk.full()) {
+            create_new_chunk();
+        }
+
+        size_type can_write = tail_->chunk.available_space();
+        if (can_write == 0) {
+            create_new_chunk();
+            can_write = tail_->chunk.available_space();
+        }
+
+        size_type to_write = (can_write < remaining) ? can_write : remaining;
+        size_type actually_written = tail_->chunk.write(current_data, to_write);
+
+        if (actually_written > 0) {
+            written += actually_written;
+            remaining -= actually_written;
+            current_data += actually_written;
+            total_size_ += actually_written;
+        } else {
+            break;
+        }
+    }
+
+    return written;
+}
+
+// 写入单个字节
 bool memory_stream::write_byte(value_type byte) {
-    if (!ensure_write_block()) {
-        return false;
+    if (tail_ == nullptr || tail_->chunk.full()) {
+        create_new_chunk();
     }
 
     if (tail_->chunk.write_byte(byte)) {
-        ++total_size_;
+        total_size_++;
         return true;
     }
+
     return false;
 }
 
+// 批量写入相同字节
 memory_stream::size_type memory_stream::fill(value_type byte, size_type count) {
     if (count == 0) {
         return 0;
     }
 
-    size_type bytes_written = 0;
+    size_type written = 0;
+    size_type remaining = count;
 
-    while (bytes_written < count) {
-        if (!ensure_write_block()) {
-            break;
+    while (remaining > 0) {
+        if (tail_ == nullptr || tail_->chunk.full()) {
+            create_new_chunk();
         }
 
-        size_type write_size = tail_->chunk.fill(byte, count - bytes_written);
-        bytes_written += write_size;
-        total_size_ += write_size;
+        size_type can_write = tail_->chunk.available_space();
+        if (can_write == 0) {
+            create_new_chunk();
+            can_write = tail_->chunk.available_space();
+        }
 
-        if (tail_->chunk.full() && bytes_written < count) {
-            add_new_chunk();
+        size_type to_write = (can_write < remaining) ? can_write : remaining;
+        size_type actually_written = tail_->chunk.fill(byte, to_write);
+
+        if (actually_written > 0) {
+            written += actually_written;
+            remaining -= actually_written;
+            total_size_ += actually_written;
+        } else {
+            break;
         }
     }
 
-    return bytes_written;
+    return written;
 }
 
+// --- 读取操作 ---
+
+// 从当前位置读取数据
 memory_stream::size_type memory_stream::read(value_type* buffer,
                                              size_type count) {
-    if (!buffer || count == 0 || empty()) {
+    if (buffer == nullptr || count == 0 || read_pos_ >= total_size_) {
         return 0;
     }
 
-    size_type bytes_read = 0;
-    value_type* dst = buffer;
-
-    if (!current_read_node_) {
-        current_read_node_ = head_.get();
-        current_read_pos_ = 0;
+    // 获取当前位置的chunk和偏移
+    auto [chunk, offset] = find_chunk_with_offset(read_pos_);
+    if (chunk == nullptr) {
+        return 0;
     }
 
-    while (bytes_read < count && current_read_node_) {
-        size_type available_in_node =
-            current_read_node_->chunk.size() - current_read_pos_;
-        if (available_in_node == 0) {
-            current_read_node_ = current_read_node_->next.get();
-            current_read_pos_ = 0;
-            continue;
-        }
+    // 读取数据
+    size_type bytes_read = read_from_chunk(chunk, offset, buffer, count);
 
-        size_type to_read = std::min(count - bytes_read, available_in_node);
-        size_type actually_read = current_read_node_->chunk.peek_at(
-            current_read_pos_, dst + bytes_read, to_read);
-
-        bytes_read += actually_read;
-        current_read_pos_ += actually_read;
-
-        if (current_read_pos_ >= current_read_node_->chunk.size()) {
-            current_read_node_ = current_read_node_->next.get();
-            current_read_pos_ = 0;
-        }
+    // 移动读取位置
+    if (bytes_read > 0) {
+        read_pos_ += bytes_read;
+        update_read_cache();
     }
 
     return bytes_read;
 }
 
-memory_stream::size_type memory_stream::peek(value_type* buffer,
-                                             size_type count) const {
-    if (!buffer || count == 0 || empty()) {
-        return 0;
-    }
-
-    chunk_node* node = head_.get();
-    size_type pos = 0;
-    size_type bytes_peeked = 0;
-
-    while (bytes_peeked < count && node) {
-        size_type available_in_node = node->chunk.size() - pos;
-        if (available_in_node == 0) {
-            node = node->next.get();
-            pos = 0;
-            continue;
-        }
-
-        size_type to_peek = std::min(count - bytes_peeked, available_in_node);
-        size_type actually_peeked =
-            node->chunk.peek_at(pos, buffer + bytes_peeked, to_peek);
-
-        bytes_peeked += actually_peeked;
-        pos += actually_peeked;
-
-        if (pos >= node->chunk.size()) {
-            node = node->next.get();
-            pos = 0;
-        }
-    }
-
-    return bytes_peeked;
-}
-
+// 读取单个字节
 std::optional<memory_stream::value_type> memory_stream::read_byte() {
-    if (empty()) {
+    if (read_pos_ >= total_size_) {
         return std::nullopt;
     }
 
-    if (!current_read_node_) {
-        current_read_node_ = head_.get();
-        current_read_pos_ = 0;
+    auto [chunk, offset] = find_chunk_with_offset(read_pos_);
+    if (chunk == nullptr) {
+        return std::nullopt;
     }
 
-    while (current_read_node_) {
-        if (current_read_pos_ < current_read_node_->chunk.size()) {
-            auto byte = current_read_node_->chunk.at(current_read_pos_);
-            if (byte.has_value()) {
-                ++current_read_pos_;
-                if (current_read_pos_ >= current_read_node_->chunk.size()) {
-                    current_read_node_ = current_read_node_->next.get();
-                    current_read_pos_ = 0;
-                }
-                return byte;
-            }
-        }
-        current_read_node_ = current_read_node_->next.get();
-        current_read_pos_ = 0;
+    auto byte = chunk->chunk.at(offset);
+    if (byte) {
+        read_pos_++;
+        update_read_cache();
     }
 
-    return std::nullopt;
+    return byte;
 }
 
-memory_stream::size_type memory_stream::consume(value_type* buffer,
-                                                size_type count) {
-    size_type bytes_consumed = 0;
-    value_type* dst = buffer;
-
-    while (bytes_consumed < count && !empty()) {
-        if (!head_) {
-            break;
-        }
-
-        size_type to_consume =
-            std::min(count - bytes_consumed, head_->chunk.size());
-
-        if (to_consume > 0) {
-            if (dst) {
-                head_->chunk.peek(dst + bytes_consumed, to_consume);
-            }
-
-            if (head_->chunk.consume_front(to_consume)) {
-                total_size_ -= to_consume;
-                bytes_consumed += to_consume;
-
-                if (head_->chunk.empty()) {
-                    remove_front_chunk();
-                }
-            }
-        }
+// 从指定位置peek数据
+memory_stream::size_type memory_stream::peek(size_type pos, value_type* buffer,
+                                             size_type count) const {
+    if (pos >= total_size_ || buffer == nullptr || count == 0) {
+        return 0;
     }
 
-    return bytes_consumed;
+    size_type available = total_size_ - pos;
+    size_type to_read = (count < available) ? count : available;
+
+    if (to_read == 0) {
+        return 0;
+    }
+
+    auto [chunk, offset] = find_chunk_with_offset(pos);
+    if (chunk == nullptr) {
+        return 0;
+    }
+
+    return read_from_chunk(chunk, offset, buffer, to_read);
 }
 
-void memory_stream::reset_read_position() {
-    current_read_node_ = head_.get();
-    current_read_pos_ = 0;
+// peek单个字节
+std::optional<memory_stream::value_type> memory_stream::peek_byte(
+    size_type pos) const {
+    if (pos >= total_size_) {
+        return std::nullopt;
+    }
+
+    auto [chunk, offset] = find_chunk_with_offset(pos);
+    if (!chunk) {
+        return std::nullopt;
+    }
+
+    return chunk->chunk.at(offset);
 }
 
-bool memory_stream::seek_read_position(size_type pos) {
-    if (pos > total_size_) {
+// 设置读取位置
+bool memory_stream::seek(size_type new_pos) {
+    if (new_pos > total_size_) {
         return false;
     }
 
-    chunk_node* node = head_.get();
-    size_type accumulated = 0;
-
-    while (node && accumulated + node->chunk.size() <= pos) {
-        accumulated += node->chunk.size();
-        node = node->next.get();
+    if (new_pos != read_pos_) {
+        read_pos_ = new_pos;
+        update_read_cache();
     }
 
-    if (node) {
-        current_read_node_ = node;
-        current_read_pos_ = pos - accumulated;
-        return true;
-    }
+    return true;
+}
 
-    return false;
+// 获取当前读取位置
+memory_stream::size_type memory_stream::tell() const noexcept {
+    return read_pos_;
+}
+
+// 将读取位置重置到开头
+void memory_stream::rewind() noexcept {
+    read_pos_ = 0;
+    if (head_ != nullptr) {
+        read_chunk_ = head_;
+        read_offset_in_chunk_ = 0;
+    }
+}
+
+// 清除所有数据
+void memory_stream::clear() noexcept {
+    head_ = nullptr;
+    tail_ = nullptr;
+    read_chunk_ = nullptr;
+    total_size_ = 0;
+    read_pos_ = 0;
+    chunk_count_ = 0;
+    read_offset_in_chunk_ = 0;
 }
 
 // --- 查询操作 ---
-memory_stream::size_type memory_stream::size() const noexcept {
-    return total_size_;
+
+// 获取指定位置的字节
+std::optional<memory_stream::value_type> memory_stream::at(
+    size_type pos) const {
+    return peek_byte(pos);
 }
 
-memory_stream::size_type memory_stream::chunk_count() const noexcept {
-    size_type count = 0;
-    const chunk_node* node = head_.get();
-    while (node) {
-        ++count;
-        node = node->next.get();
+// 获取第一个字节
+std::optional<memory_stream::value_type> memory_stream::front() const {
+    if (head_ == nullptr || head_->chunk.empty()) {
+        return std::nullopt;
     }
-    return count;
+    return head_->chunk.front();
+}
+
+// 获取最后一个字节
+std::optional<memory_stream::value_type> memory_stream::back() const {
+    if (tail_ == nullptr || tail_->chunk.empty()) {
+        return std::nullopt;
+    }
+    return tail_->chunk.back();
+}
+
+// 是否可读取更多数据
+bool memory_stream::can_read() const noexcept {
+    return read_pos_ < total_size_;
+}
+
+// 剩余可读取字节数
+memory_stream::size_type memory_stream::readable_bytes() const noexcept {
+    return (read_pos_ < total_size_) ? (total_size_ - read_pos_) : 0;
+}
+
+// 是否到达末尾
+bool memory_stream::eof() const noexcept { return read_pos_ >= total_size_; }
+
+// --- 容量查询 ---
+memory_stream::size_type memory_stream::size() const noexcept {
+    return total_size_;
 }
 
 bool memory_stream::empty() const noexcept { return total_size_ == 0; }
@@ -366,177 +432,146 @@ memory_stream::size_type memory_stream::chunk_capacity() const noexcept {
     return chunk_capacity_;
 }
 
-// --- 清理操作 ---
-void memory_stream::clear() {
-    head_.reset();
-    tail_ = nullptr;
-    current_read_node_ = nullptr;
-    current_read_pos_ = 0;
-    total_size_ = 0;
+memory_stream::size_type memory_stream::chunk_count() const noexcept {
+    return chunk_count_;
 }
 
-void memory_stream::trim() {
-    while (head_ && head_->chunk.empty()) {
-        remove_front_chunk();
-    }
+// --- 高级功能 ---
 
-    if (head_) {
-        current_read_node_ = head_.get();
-        current_read_pos_ = 0;
-    } else {
-        current_read_node_ = nullptr;
-        current_read_pos_ = 0;
-    }
-}
-
-// --- 迭代器支持 ---
-memory_stream::iterator memory_stream::begin() {
-    if (!head_ || head_->chunk.empty()) {
-        return {nullptr, 0};
-    }
-    return {head_.get(), 0};
-}
-
-memory_stream::const_iterator memory_stream::begin() const {
-    if (!head_ || head_->chunk.empty()) {
-        return {nullptr, 0};
-    }
-    return {head_.get(), 0};
-}
-
-memory_stream::iterator memory_stream::end() {
-    if (!tail_) {
-        return {nullptr, 0};
-    }
-    return {nullptr, 0};
-}
-
-memory_stream::const_iterator memory_stream::end() const {
-    if (!tail_) {
-        return {nullptr, 0};
-    }
-    return {nullptr, 0};
-}
-
-memory_stream::const_iterator memory_stream::cbegin() const { return begin(); }
-
-memory_stream::const_iterator memory_stream::cend() const { return end(); }
-
-// --- 高级操作 ---
-std::vector<memory_stream::value_type> memory_stream::to_vector() const {
+// 拷贝数据到vector
+std::vector<memory_stream::value_type> memory_stream::copy_to_vector() const {
     std::vector<value_type> result;
     result.reserve(total_size_);
 
-    const chunk_node* node = head_.get();
-    while (node) {
-        const auto* data = node->chunk.data();
-        size_type node_size = node->chunk.size();
-        result.insert(result.end(), data, data + node_size);
-        node = node->next.get();
+    value_type temp[1024];
+    std::shared_ptr<chunk_node> current = head_;
+
+    while (current != nullptr) {
+        size_type chunk_size = current->chunk.size();
+        size_type offset = 0;
+
+        while (offset < chunk_size) {
+            size_type to_read =
+                (chunk_size - offset < 1024) ? (chunk_size - offset) : 1024;
+
+            size_type read = current->chunk.peek_at(offset, temp, to_read);
+
+            if (read > 0) {
+                result.insert(result.end(), temp, temp + read);
+                offset += read;
+            } else {
+                break;
+            }
+        }
+
+        current = current->next;
     }
 
     return result;
 }
 
-void memory_stream::compact() {
-    if (chunk_count() <= 1) {
-        return;
+// 从当前位置拷贝指定数量的数据到vector
+std::vector<memory_stream::value_type> memory_stream::copy_from_current(
+    size_type count) const {
+    std::vector<value_type> result;
+
+    if (read_pos_ >= total_size_) {
+        return result;
     }
 
-    auto new_chunk = std::make_unique<chunk_node>(chunk_capacity_);
-    chunk_node* new_tail = new_chunk.get();
+    size_type available = total_size_ - read_pos_;
+    size_type to_copy = (count < available) ? count : available;
 
-    chunk_node* node = head_.get();
-    while (node) {
-        size_type to_copy = node->chunk.size();
-        if (to_copy > 0) {
-            if (new_tail->chunk.full()) {
-                auto next_chunk = std::make_unique<chunk_node>(chunk_capacity_);
-                new_tail->next = std::move(next_chunk);
-                new_tail = new_tail->next.get();
-            }
-
-            size_type available = new_tail->chunk.available_space();
-            size_type copy_now = std::min(to_copy, available);
-
-            new_tail->chunk.write(node->chunk.data(), copy_now);
-
-            if (copy_now < to_copy) {
-                new_tail->chunk.write(node->chunk.data() + copy_now,
-                                      to_copy - copy_now);
-            }
-        }
-        node = node->next.get();
+    if (to_copy == 0) {
+        return result;
     }
 
-    head_ = std::move(new_chunk);
-    tail_ = new_tail;
-    current_read_node_ = head_.get();
-    current_read_pos_ = 0;
+    result.resize(to_copy);
+    size_type copied = peek(read_pos_, result.data(), to_copy);
+    result.resize(copied);
+
+    return result;
 }
 
-std::vector<memory_stream::chunk_stats> memory_stream::get_chunk_stats() const {
-    std::vector<chunk_stats> stats;
-    const chunk_node* node = head_.get();
-    size_type index = 0;
-
-    while (node) {
-        chunk_stats s;
-        s.chunk_index = index;
-        s.data_size = node->chunk.size();
-        s.capacity = node->chunk.capacity();
-        s.usage_percent =
-            (s.capacity > 0)
-                ? (static_cast<double>(s.data_size) / s.capacity * 100.0)
-                : 0.0;
-        stats.push_back(s);
-
-        node = node->next.get();
-        ++index;
+// 查找字节
+std::optional<memory_stream::size_type> memory_stream::find(
+    value_type byte, size_type start_pos) const {
+    if (start_pos >= total_size_) {
+        return std::nullopt;
     }
 
-    return stats;
+    auto [current, offset] = find_chunk_with_offset(start_pos);
+    if (!current) {
+        return std::nullopt;
+    }
+
+    while (current != nullptr) {
+        std::optional<size_type> pos_in_chunk =
+            current->chunk.find(byte, offset);
+
+        if (pos_in_chunk) {
+            return current->global_start + *pos_in_chunk;
+        }
+
+        offset = 0;
+        current = current->next;
+    }
+
+    return std::nullopt;
 }
 
-// --- 私有辅助方法 ---
-bool memory_stream::ensure_write_block() {
-    if (!head_) {
-        head_ = std::make_unique<chunk_node>(chunk_capacity_);
-        tail_ = head_.get();
-        if (!current_read_node_) {
-            current_read_node_ = head_.get();
-        }
+// 查找字节（从当前位置开始）
+std::optional<memory_stream::size_type> memory_stream::find_from_current(
+    value_type byte) const {
+    return find(byte, read_pos_);
+}
+
+// 比较两个stream的内容
+bool memory_stream::equals(const memory_stream& other) const {
+    if (this == &other) {
         return true;
     }
 
-    if (tail_->chunk.full()) {
-        add_new_chunk();
+    if (total_size_ != other.total_size_) {
+        return false;
     }
 
-    return tail_ != nullptr;
+    if (total_size_ == 0) {
+        return true;
+    }
+
+    std::shared_ptr<chunk_node> curr1 = head_;
+    std::shared_ptr<chunk_node> curr2 = other.head_;
+
+    while (curr1 != nullptr && curr2 != nullptr) {
+        if (!curr1->chunk.equals(curr2->chunk)) {
+            return false;
+        }
+        curr1 = curr1->next;
+        curr2 = curr2->next;
+    }
+
+    return curr1 == nullptr && curr2 == nullptr;
 }
 
-void memory_stream::add_new_chunk() {
-    auto new_chunk = std::make_unique<chunk_node>(chunk_capacity_);
-    tail_->next = std::move(new_chunk);
-    tail_ = tail_->next.get();
+// 跳过指定字节数
+bool memory_stream::skip(size_type count) {
+    if (read_pos_ + count > total_size_) {
+        return false;
+    }
+
+    read_pos_ += count;
+    update_read_cache();
+    return true;
 }
 
-void memory_stream::remove_front_chunk() {
-    if (!head_) {
-        return;
+// 跳过字节直到找到特定字节
+std::optional<memory_stream::size_type> memory_stream::skip_until(
+    value_type byte) {
+    auto pos = find_from_current(byte);
+    if (pos) {
+        read_pos_ = *pos;
+        update_read_cache();
     }
-
-    if (current_read_node_ == head_.get()) {
-        current_read_node_ = head_->next.get();
-        current_read_pos_ = 0;
-    }
-
-    head_ = std::move(head_->next);
-
-    if (!head_) {
-        tail_ = nullptr;
-        current_read_node_ = nullptr;
-        current_read_pos_ = 0;
-    }
+    return pos;
 }

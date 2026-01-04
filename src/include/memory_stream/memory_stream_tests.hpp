@@ -1,880 +1,655 @@
+#pragma once
+
+#include <fmt/color.h>
 #include <fmt/core.h>
 
-#include <algorithm>
 #include <cassert>
-#include <iostream>
-#include <numeric>
+#include <sstream>
 #include <string>
 #include <vector>
 
 #include "memory_stream/memory_stream.hpp"
 
 
-// 测试辅助函数
-template <typename T>
-std::string bytes_to_hex(const T* data, size_t size) {
-    static const char hex_chars[] = "0123456789ABCDEF";
-    std::string result;
-    result.reserve(size * 3);
+class MemoryStreamTest {
+   public:
+    // 运行所有测试
+    static void run_all_tests() {
+        fmt::print(fg(fmt::color::light_blue) | fmt::emphasis::bold,
+                   "=== 开始 Memory Stream 测试 ===\n\n");
 
-    for (size_t i = 0; i < size; ++i) {
-        if (i > 0) result.push_back(' ');
-        result.push_back(hex_chars[(data[i] >> 4) & 0x0F]);
-        result.push_back(hex_chars[data[i] & 0x0F]);
-    }
-    return result;
-}
+        int total = 0;
+        int passed = 0;
 
-// 测试1: 基本构造和查询
-bool test_basic_construction() {
-    fmt::print("\n🧪 测试1: 基本构造和查询\n");
-
-    try {
-        // 测试默认构造函数
-        memory_stream stream1(64);
-        assert(stream1.empty());
-        assert(stream1.size() == 0);
-        assert(stream1.chunk_count() == 0);
-        assert(stream1.chunk_capacity() == 64);
-        fmt::print("  ✓ 默认构造测试通过\n");
-
-        // 测试枚举构造
-        memory_stream stream2(block_sizes::KB_1);
-        assert(stream2.chunk_capacity() == 1024);
-        fmt::print("  ✓ 枚举构造测试通过\n");
-
-        // 测试移动构造
-        memory_stream stream3(32);
-        stream3.write(
-            reinterpret_cast<const memory_stream::value_type*>("test"), 4);
-        memory_stream stream4(std::move(stream3));
-        assert(stream3.empty());
-        assert(stream4.size() == 4);
-        fmt::print("  ✓ 移动构造测试通过\n");
-
-        // 测试移动赋值
-        memory_stream stream5(16);
-        stream5 = std::move(stream4);
-        assert(stream4.empty());
-        assert(stream5.size() == 4);
-        fmt::print("  ✓ 移动赋值测试通过\n");
-
-        fmt::print("✅ 测试1 全部通过\n");
-        return true;
-    } catch (const std::exception& e) {
-        fmt::print("❌ 测试1 失败: {}\n", e.what());
-        return false;
-    }
-}
-
-// 测试2: 小数据写入和读取
-bool test_small_data_io() {
-    fmt::print("\n🧪 测试2: 小数据写入和读取\n");
-
-    try {
-        memory_stream stream(16);
-        fmt::print("  创建流，块大小: {} 字节\n", stream.chunk_capacity());
-
-        // 写入数据
-        const char* data = "Hello, MemoryStream!";
-        size_t data_len = 20;  // 不包括字符串结尾的\0
-        size_t written = stream.write(
-            reinterpret_cast<const memory_stream::value_type*>(data), data_len);
-
-        fmt::print("  写入数据: '{}' ({} 字节)\n", std::string(data, data_len),
-                   written);
-        assert(written == data_len);
-        assert(stream.size() == data_len);
-        assert(!stream.empty());
-        assert(stream.chunk_count() == 1);
-
-        // peek 测试
-        char peek_buffer[6] = {0};
-        size_t peeked = stream.peek(
-            reinterpret_cast<memory_stream::value_type*>(peek_buffer), 5);
-        assert(peeked == 5);
-        assert(std::string(peek_buffer, 5) == "Hello");
-        fmt::print("  peek 前5字节: '{}'\n", std::string(peek_buffer, 5));
-
-        // 读取测试
-        char buffer[21] = {0};
-        size_t read = stream.read(
-            reinterpret_cast<memory_stream::value_type*>(buffer), 20);
-        assert(read == 20);
-        assert(std::string(buffer, 20) == std::string(data, 20));
-        fmt::print("  读取数据: '{}' ({} 字节)\n", std::string(buffer, 20),
-                   read);
-
-        // 验证读取后数据仍在
-        assert(stream.size() == 20);
-
-        fmt::print("✅ 测试2 全部通过\n");
-        return true;
-    } catch (const std::exception& e) {
-        fmt::print("❌ 测试2 失败: {}\n", e.what());
-        return false;
-    }
-}
-
-// 测试3: 跨块大数据写入
-bool test_large_data_cross_chunks() {
-    fmt::print("\n🧪 测试3: 跨块大数据写入\n");
-
-    try {
-        const size_t chunk_size = 32;
-        const size_t total_data = 100;
-        memory_stream stream(chunk_size);
-
-        fmt::print("  块大小: {} 字节, 总数据: {} 字节\n", chunk_size,
-                   total_data);
-
-        // 准备测试数据
-        std::vector<memory_stream::value_type> data(total_data);
-        for (size_t i = 0; i < total_data; ++i) {
-            data[i] = static_cast<memory_stream::value_type>(i % 256);
-        }
-
-        // 写入数据
-        size_t written = stream.write(data.data(), total_data);
-        assert(written == total_data);
-        assert(stream.size() == total_data);
-
-        // 验证块数
-        size_t expected_chunks = (total_data + chunk_size - 1) / chunk_size;
-        size_t actual_chunks = stream.chunk_count();
-        fmt::print("  预期块数: {}, 实际块数: {}\n", expected_chunks,
-                   actual_chunks);
-        assert(actual_chunks == expected_chunks);
-
-        // 验证块使用情况
-        auto stats = stream.get_chunk_stats();
-        fmt::print("  块使用统计:\n");
-        for (const auto& stat : stats) {
-            fmt::print("    块 {:2d}: {:3} / {:3} 字节 ({:5.1f}%)\n",
-                       stat.chunk_index, stat.data_size, stat.capacity,
-                       stat.usage_percent);
-
-            // 前几个块应该都满了
-            if (stat.chunk_index < actual_chunks - 1) {
-                assert(stat.data_size == chunk_size);
-                assert(stat.usage_percent == 100.0);
+        auto run_test = [&](const std::string& name, auto test_func) {
+            total++;
+            print_test(name);
+            try {
+                test_func();
+                print_passed();
+                passed++;
+            } catch (const std::exception& e) {
+                print_failed(fmt::format("异常: {}", e.what()));
+            } catch (...) {
+                print_failed("未知异常");
             }
+        };
+
+        // 运行所有测试用例
+        run_test("默认构造", test_default_construction);
+        run_test("自定义构造", test_custom_construction);
+        run_test("移动语义", test_move_semantics);
+        run_test("基本写入操作", test_write_basic);
+        run_test("写入字节操作", test_write_bytes);
+        run_test("填充操作", test_fill);
+        run_test("基本读取操作", test_read_basic);
+        run_test("读取字节操作", test_read_byte);
+        run_test("查看操作", test_peek);
+        run_test("定位/获取/重置操作", test_seek_tell_rewind);
+        run_test("容量查询", test_capacity_queries);
+        run_test("元素访问", test_element_access);
+        run_test("查找操作", test_find_operations);
+        run_test("拷贝操作", test_copy_operations);
+        run_test("跳过操作", test_skip_operations);
+        run_test("边界情况", test_edge_cases);
+        run_test("大数据操作", test_large_data);
+        run_test("混合操作", test_mixed_operations);
+
+        fmt::print("\n");
+        fmt::print(fg(fmt::color::light_blue) | fmt::emphasis::bold,
+                   "=== 所有测试完成 ===\n");
+
+        if (passed == total) {
+            fmt::print(fg(fmt::color::green) | fmt::emphasis::bold,
+                       "✓ 所有测试通过! ({}/{})\n", passed, total);
+        } else {
+            fmt::print(fg(fmt::color::red) | fmt::emphasis::bold,
+                       "✗ 测试失败! 通过: {}/{}\n", passed, total);
         }
-
-        // 验证数据
-        std::vector<memory_stream::value_type> read_buffer(total_data);
-        size_t read = stream.read(read_buffer.data(), total_data);
-        assert(read == total_data);
-        assert(std::equal(data.begin(), data.end(), read_buffer.begin()));
-
-        fmt::print("  ✅ 数据验证通过 ({} 字节)\n", read);
-        fmt::print("✅ 测试3 全部通过\n");
-        return true;
-    } catch (const std::exception& e) {
-        fmt::print("❌ 测试3 失败: {}\n", e.what());
-        return false;
     }
-}
 
-// 测试4: 逐字节操作
-bool test_byte_by_byte_operations() {
-    fmt::print("\n🧪 测试4: 逐字节操作\n");
+   private:
+    // 测试工具函数
+    static bool compare_vectors(const std::vector<unsigned char>& v1,
+                                const std::vector<unsigned char>& v2) {
+        if (v1.size() != v2.size()) return false;
+        for (size_t i = 0; i < v1.size(); ++i) {
+            if (v1[i] != v2[i]) return false;
+        }
+        return true;
+    }
 
-    try {
-        memory_stream stream(8);
-        fmt::print("  块大小: {} 字节\n", stream.chunk_capacity());
+    static std::string vector_to_string(const std::vector<unsigned char>& vec) {
+        std::ostringstream oss;
+        for (size_t i = 0; i < vec.size(); ++i) {
+            if (i > 0) oss << ", ";
+            oss << static_cast<int>(vec[i]);
+        }
+        return oss.str();
+    }
 
-        // 逐字节写入
-        fmt::print("  写入: ");
-        for (int i = 0; i < 10; ++i) {
-            char ch = 'A' + i;
-            bool success = stream.write_byte(ch);
-            assert(success);
-            fmt::print("'{}' ", ch);
+    static void print_test(const std::string& test_name) {
+        fmt::print("测试: {:<30} ... ", test_name);
+    }
+
+    static void print_passed() {
+        fmt::print(fg(fmt::color::green), "✓ 通过\n");
+    }
+
+    static void print_failed(const std::string& msg = "") {
+        fmt::print(fg(fmt::color::red), "✗ 失败");
+        if (!msg.empty()) {
+            fmt::print(" - {}", msg);
         }
         fmt::print("\n");
+    }
 
+    // 测试用例
+    static void test_default_construction() {
+        memory_stream stream;
+
+        assert(stream.size() == 0);
+        assert(stream.empty());
+        assert(stream.tell() == 0);
+        assert(stream.chunk_capacity() ==
+               static_cast<size_t>(block_sizes::DefaultChunkSize));
+        assert(stream.chunk_count() == 0);
+        assert(!stream.can_read());
+        assert(stream.readable_bytes() == 0);
+        assert(stream.eof());
+    }
+
+    static void test_custom_construction() {
+        // 使用 enum 构造
+        memory_stream stream1(block_sizes::KB_2);
+        assert(stream1.chunk_capacity() == 2048);
+
+        // 使用 size_t 构造
+        memory_stream stream2(4096);
+        assert(stream2.chunk_capacity() == 4096);
+    }
+
+    static void test_move_semantics() {
+        // 创建原始流
+        memory_stream original(block_sizes::KB_1);
+        std::vector<unsigned char> data = {1, 2, 3, 4, 5};
+        original.write(data.data(), data.size());
+        original.read_byte();  // 移动读取位置
+
+        // 保存状态
+        size_t original_size = original.size();
+        size_t original_tell = original.tell();
+
+        // 移动构造
+        memory_stream moved(std::move(original));
+        assert(moved.size() == original_size);
+        assert(moved.tell() == original_tell);
+        assert(moved.chunk_capacity() == 1024);
+
+        // 移动后原始对象应为空
+        assert(original.size() == 0);
+        assert(original.empty());
+
+        // 移动赋值
+        memory_stream another(block_sizes::KB_2);
+        another = std::move(moved);
+        assert(another.size() == original_size);
+    }
+
+    static void test_write_basic() {
+        memory_stream stream(block_sizes::Bytes_128);
+
+        // 写入少量数据
+        std::vector<unsigned char> data1 = {1, 2, 3, 4, 5};
+        size_t written = stream.write(data1.data(), data1.size());
+        assert(written == 5);
+        assert(stream.size() == 5);
+        assert(!stream.empty());
+
+        // 写入更多数据
+        std::vector<unsigned char> data2(100, 0xFF);
+        written = stream.write(data2.data(), data2.size());
+        assert(written == 100);
+        assert(stream.size() == 105);
+        assert(stream.chunk_count() > 0);
+
+        // 写入零字节
+        written = stream.write(nullptr, 0);
+        assert(written == 0);
+        written = stream.write(data2.data(), 0);
+        assert(written == 0);
+    }
+
+    static void test_write_bytes() {
+        memory_stream stream(block_sizes::Bytes_64);
+
+        // 写入单个字节
+        assert(stream.write_byte(0xAA));
+        assert(stream.size() == 1);
+        assert(stream.tell() == 0);
+
+        // 写入多个字节
+        for (int i = 0; i < 10; ++i) {
+            assert(stream.write_byte(static_cast<unsigned char>(i)));
+        }
+        assert(stream.size() == 11);
+    }
+
+    static void test_fill() {
+        memory_stream stream(block_sizes::Bytes_64);
+
+        // 填充少量数据
+        size_t filled = stream.fill(0xCC, 10);
+        assert(filled == 10);
         assert(stream.size() == 10);
-        assert(stream.chunk_count() == 2);
 
-        // 测试 front 和 back
-        auto front_byte = stream.front();
-        auto back_byte = stream.back();
-        assert(front_byte.has_value() && front_byte.value() == 'A');
-        assert(back_byte.has_value() && back_byte.value() == 'J');
-        fmt::print("  首字节: '{}', 尾字节: '{}'\n",
-                   static_cast<char>(front_byte.value()),
-                   static_cast<char>(back_byte.value()));
+        // 检查填充的内容
+        for (size_t i = 0; i < 10; ++i) {
+            auto byte = stream.peek_byte(i);
+            assert(byte && *byte == 0xCC);
+        }
 
-        // 逐字节读取
-        fmt::print("  读取: ");
+        // 填充大量数据（跨chunk）
+        filled = stream.fill(0xDD, 100);
+        assert(filled == 100);
+        assert(stream.size() == 110);
+        assert(stream.chunk_count() > 1);
+    }
+
+    static void test_read_basic() {
+        memory_stream stream(block_sizes::Bytes_64);
+
+        // 准备数据
+        std::vector<unsigned char> original(50);
+        for (size_t i = 0; i < original.size(); ++i) {
+            original[i] = static_cast<unsigned char>(i);
+        }
+        stream.write(original.data(), original.size());
+
+        // 读取部分数据
+        unsigned char buffer1[20];
+        size_t read = stream.read(buffer1, 20);
+        assert(read == 20);
+        assert(stream.tell() == 20);
+
+        // 验证读取的数据
+        for (size_t i = 0; i < 20; ++i) {
+            assert(buffer1[i] == original[i]);
+        }
+
+        // 读取剩余数据
+        unsigned char buffer2[30];
+        read = stream.read(buffer2, 30);
+        assert(read == 30);
+        assert(stream.tell() == 50);
+        assert(stream.eof());
+
+        // 读取更多（应该返回0）
+        read = stream.read(buffer2, 10);
+        assert(read == 0);
+        assert(stream.tell() == 50);
+    }
+
+    static void test_read_byte() {
+        memory_stream stream(block_sizes::Bytes_64);
+
+        // 准备数据
+        for (int i = 0; i < 10; ++i) {
+            stream.write_byte(static_cast<unsigned char>(i));
+        }
+
+        // 逐个字节读取
         for (int i = 0; i < 10; ++i) {
             auto byte = stream.read_byte();
-            assert(byte.has_value());
-            assert(byte.value() == 'A' + i);
-            fmt::print("'{}' ", static_cast<char>(byte.value()));
+            assert(byte && *byte == static_cast<unsigned char>(i));
+            assert(stream.tell() == static_cast<size_t>(i + 1));
         }
-        fmt::print("\n");
 
-        // 测试读取完的情况
-        assert(stream.read_byte() == std::nullopt);
-
-        fmt::print("✅ 测试4 全部通过\n");
-        return true;
-    } catch (const std::exception& e) {
-        fmt::print("❌ 测试4 失败: {}\n", e.what());
-        return false;
+        // 读取结束
+        auto byte = stream.read_byte();
+        assert(!byte);
+        assert(stream.eof());
     }
-}
 
-// 测试5: 批量填充操作
-bool test_fill_operation() {
-    fmt::print("\n🧪 测试5: 批量填充操作\n");
+    static void test_peek() {
+        memory_stream stream(block_sizes::Bytes_128);
 
-    try {
-        memory_stream stream(16);
-        fmt::print("  块大小: {} 字节\n", stream.chunk_capacity());
+        // 准备数据
+        std::vector<unsigned char> data(50);
+        for (size_t i = 0; i < data.size(); ++i) {
+            data[i] = static_cast<unsigned char>(i + 1);
+        }
+        stream.write(data.data(), data.size());
 
-        // 批量填充
-        const memory_stream::value_type fill_byte = 0xAA;
-        const size_t fill_count = 50;
-        size_t written = stream.fill(fill_byte, fill_count);
+        // 从不同位置peek
+        unsigned char buffer[10];
 
-        fmt::print("  填充 {} 字节 0x{:02X}\n", written, fill_byte);
-        assert(written == fill_count);
-        assert(stream.size() == fill_count);
+        // peek开头
+        size_t peeked = stream.peek(0, buffer, 10);
+        assert(peeked == 10);
+        for (size_t i = 0; i < 10; ++i) {
+            assert(buffer[i] == data[i]);
+        }
+        assert(stream.tell() == 0);  // peek不移动位置
 
-        // 验证填充结果
-        std::vector<memory_stream::value_type> buffer(50);
-        size_t peeked = stream.peek(buffer.data(), 50);
-        assert(peeked == 50);
+        // peek中间
+        peeked = stream.peek(20, buffer, 10);
+        assert(peeked == 10);
+        for (size_t i = 0; i < 10; ++i) {
+            assert(buffer[i] == data[20 + i]);
+        }
 
-        bool all_same =
-            std::all_of(buffer.begin(), buffer.end(),
-                        [fill_byte](auto b) { return b == fill_byte; });
-        assert(all_same);
+        // peek单个字节
+        auto byte = stream.peek_byte(25);
+        assert(byte && *byte == data[25]);
 
-        // 十六进制显示前20字节
-        fmt::print("  前20字节: {}\n", bytes_to_hex(buffer.data(), 20));
+        // peek超出范围
+        byte = stream.peek_byte(100);
+        assert(!byte);
 
-        // 测试部分读取
-        char small_buffer[10] = {0};
-        size_t read = stream.read(
-            reinterpret_cast<memory_stream::value_type*>(small_buffer), 10);
-        assert(read == 10);
-        assert(std::all_of(small_buffer, small_buffer + 10,
-                           [fill_byte](auto b) { return b == fill_byte; }));
-
-        fmt::print("  ✓ 批量填充验证通过\n");
-        fmt::print("✅ 测试5 全部通过\n");
-        return true;
-    } catch (const std::exception& e) {
-        fmt::print("❌ 测试5 失败: {}\n", e.what());
-        return false;
+        peeked = stream.peek(45, buffer, 10);
+        assert(peeked == 5);  // 只有5个字节可读
     }
-}
 
-// 测试6: 迭代器测试
-bool test_iterators() {
-    fmt::print("\n🧪 测试6: 迭代器测试\n");
+    static void test_seek_tell_rewind() {
+        memory_stream stream(block_sizes::Bytes_64);
 
-    try {
-        memory_stream stream(8);
+        // 准备数据
+        std::vector<unsigned char> data(30);
+        for (size_t i = 0; i < data.size(); ++i) {
+            data[i] = static_cast<unsigned char>(i);
+        }
+        stream.write(data.data(), data.size());
+
+        // 初始位置
+        assert(stream.tell() == 0);
+
+        // seek到不同位置
+        assert(stream.seek(10));
+        assert(stream.tell() == 10);
+
+        // 读取验证
+        unsigned char buffer[5];
+        size_t read = stream.read(buffer, 5);
+        assert(read == 5);
+        for (size_t i = 0; i < 5; ++i) {
+            assert(buffer[i] == data[10 + i]);
+        }
+        assert(stream.tell() == 15);
+
+        // seek到开头
+        assert(stream.seek(0));
+        assert(stream.tell() == 0);
+
+        // seek到末尾
+        assert(stream.seek(30));
+        assert(stream.tell() == 30);
+        assert(stream.eof());
+
+        // seek超出范围
+        assert(!stream.seek(35));
+        assert(stream.tell() == 30);  // 位置不变
+
+        // rewind
+        stream.rewind();
+        assert(stream.tell() == 0);
+        assert(!stream.eof());
+    }
+
+    static void test_capacity_queries() {
+        memory_stream stream(block_sizes::Bytes_256);
+
+        // 初始状态
+        assert(stream.empty());
+        assert(stream.size() == 0);
+        assert(stream.chunk_capacity() == 256);
+        assert(stream.chunk_count() == 0);
+        assert(!stream.can_read());
+        assert(stream.readable_bytes() == 0);
+        assert(stream.eof());
 
         // 写入数据
-        std::string test_data = "ABCDEFGHIJKLMNOPQRST";
-        stream.write(reinterpret_cast<const memory_stream::value_type*>(
-                         test_data.c_str()),
-                     test_data.size());
+        std::vector<unsigned char> data(300, 0xAA);  // 超过一个chunk
+        stream.write(data.data(), data.size());
 
-        fmt::print("  写入数据: '{}' ({} 字节)\n", test_data, test_data.size());
+        // 写入后状态
+        assert(!stream.empty());
+        assert(stream.size() == 300);
+        assert(stream.chunk_count() >= 2);  // 至少2个chunk
+        assert(stream.can_read());
+        assert(stream.readable_bytes() == 300);
+        assert(!stream.eof());
 
-        // 使用迭代器遍历
-        std::string from_iterator;
-        for (auto it = stream.begin(); it != stream.end(); ++it) {
-            from_iterator.push_back(static_cast<char>(*it));
-        }
-
-        fmt::print("  迭代器遍历结果: '{}'\n", from_iterator);
-        assert(from_iterator == test_data);
-
-        // 使用范围for遍历
-        std::string from_range_for;
-        for (auto byte : stream) {
-            from_range_for.push_back(static_cast<char>(byte));
-        }
-
-        fmt::print("  范围for遍历结果: '{}'\n", from_range_for);
-        assert(from_range_for == test_data);
-
-        // 测试const迭代器
-        const memory_stream& const_stream = stream;
-        std::string from_const_iterator;
-        for (auto it = const_stream.cbegin(); it != const_stream.cend(); ++it) {
-            from_const_iterator.push_back(static_cast<char>(*it));
-        }
-
-        fmt::print("  const迭代器遍历结果: '{}'\n", from_const_iterator);
-        assert(from_const_iterator == test_data);
-
-        fmt::print("✅ 测试6 全部通过\n");
-        return true;
-    } catch (const std::exception& e) {
-        fmt::print("❌ 测试6 失败: {}\n", e.what());
-        return false;
+        // 读取部分数据后
+        stream.read_byte();
+        assert(stream.size() == 300);  // 大小不变
+        assert(stream.tell() == 1);
+        assert(stream.readable_bytes() == 299);
+        assert(stream.can_read());
     }
-}
 
-// 测试7: 消费操作测试
-bool test_consume_operation() {
-    fmt::print("\n🧪 测试7: 消费操作测试\n");
+    static void test_element_access() {
+        memory_stream stream(block_sizes::Bytes_128);
 
-    try {
-        memory_stream stream(16);
+        // 准备数据
+        std::vector<unsigned char> data = {10, 20, 30, 40, 50};
+        stream.write(data.data(), data.size());
 
-        // 写入数据
-        std::string data = "HelloWorld1234567890";
-        stream.write(
-            reinterpret_cast<const memory_stream::value_type*>(data.c_str()),
-            data.size());
+        // at() 方法
+        auto byte1 = stream.at(0);
+        assert(byte1 && *byte1 == 10);
 
-        fmt::print("  初始数据: '{}' ({} 字节)\n", data, data.size());
-        fmt::print("  初始块数: {}\n", stream.chunk_count());
+        auto byte2 = stream.at(2);
+        assert(byte2 && *byte2 == 30);
 
-        // 消费部分数据
-        char buffer1[5] = {0};
-        size_t consumed1 = stream.consume(
-            reinterpret_cast<memory_stream::value_type*>(buffer1), 5);
+        auto byte3 = stream.at(4);
+        assert(byte3 && *byte3 == 50);
 
-        fmt::print("  消费5字节: '{}'\n", std::string(buffer1, 5));
-        assert(consumed1 == 5);
-        assert(std::string(buffer1, 5) == "Hello");
-        assert(stream.size() == 15);
+        auto byte4 = stream.at(10);  // 超出范围
+        assert(!byte4);
 
-        // 继续消费
-        char buffer2[6] = {0};
-        size_t consumed2 = stream.consume(
-            reinterpret_cast<memory_stream::value_type*>(buffer2), 6);
+        // front() 和 back()
+        auto front = stream.front();
+        assert(front && *front == 10);
 
-        fmt::print("  消费6字节: '{}'\n", std::string(buffer2, 6));
-        assert(consumed2 == 6);
-        assert(std::string(buffer2, 6) == "World1");
-        assert(stream.size() == 9);
+        auto back = stream.back();
+        assert(back && *back == 50);
 
-        // 消费剩余数据
-        char buffer3[10] = {0};
-        size_t consumed3 = stream.consume(
-            reinterpret_cast<memory_stream::value_type*>(buffer3), 10);
-
-        fmt::print("  消费剩余 {} 字节: '{}'\n", consumed3,
-                   std::string(buffer3, consumed3));
-        assert(consumed3 == 9);
-        assert(std::string(buffer3, 9) == "234567890");
-        assert(stream.empty());
-
-        fmt::print("  ✓ 消费操作验证通过\n");
-        fmt::print("✅ 测试7 全部通过\n");
-        return true;
-    } catch (const std::exception& e) {
-        fmt::print("❌ 测试7 失败: {}\n", e.what());
-        return false;
+        // 清空后测试
+        stream.clear();
+        assert(!stream.front());
+        assert(!stream.back());
+        assert(!stream.at(0));
     }
-}
 
-// 测试8: seek和位置操作
-bool test_seek_and_position() {
-    fmt::print("\n🧪 测试8: seek和位置操作\n");
+    static void test_find_operations() {
+        memory_stream stream(block_sizes::Bytes_128);
 
-    try {
-        memory_stream stream(8);
+        // 准备数据: 1, 2, 3, 4, 5, 3, 6, 7, 3, 8
+        std::vector<unsigned char> data = {1, 2, 3, 4, 5, 3, 6, 7, 3, 8};
+        stream.write(data.data(), data.size());
 
-        // 写入字母表
-        std::string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-        stream.write(reinterpret_cast<const memory_stream::value_type*>(
-                         alphabet.c_str()),
-                     26);
+        // 从开头查找
+        auto pos1 = stream.find(3);
+        assert(pos1 && *pos1 == 2);  // 第一个3在位置2
 
-        fmt::print("  写入字母表 ({} 字节)\n", alphabet.size());
+        // 从指定位置查找
+        auto pos2 = stream.find(3, 3);
+        assert(pos2 && *pos2 == 5);  // 从位置3开始，找到位置5的3
 
-        // 测试 seek
-        assert(stream.seek_read_position(5));
+        // 从当前位置查找
+        stream.seek(6);
+        auto pos3 = stream.find_from_current(3);
+        assert(pos3 && *pos3 == 8);  // 从位置6开始，找到位置8的3
 
-        char buffer[5] = {0};
-        size_t read1 = stream.read(
-            reinterpret_cast<memory_stream::value_type*>(buffer), 5);
-        assert(read1 == 5);
-        assert(std::string(buffer, 5) == "FGHIJ");
-        fmt::print("  seek到位置5，读取: '{}'\n", std::string(buffer, 5));
+        // 查找不存在的字节
+        auto pos4 = stream.find(100);
+        assert(!pos4);
 
-        // 重置读取位置
-        stream.reset_read_position();
-
-        char buffer2[5] = {0};
-        size_t read2 = stream.read(
-            reinterpret_cast<memory_stream::value_type*>(buffer2), 5);
-        assert(read2 == 5);
-        assert(std::string(buffer2, 5) == "ABCDE");
-        fmt::print("  重置位置，读取: '{}'\n", std::string(buffer2, 5));
-
-        // 测试 seek 到末尾
-        assert(stream.seek_read_position(20));
-
-        char buffer3[6] = {0};
-        size_t read3 = stream.read(
-            reinterpret_cast<memory_stream::value_type*>(buffer3), 6);
-        assert(read3 == 6);
-        assert(std::string(buffer3, 6) == "UVWXYZ");
-        fmt::print("  seek到位置20，读取: '{}'\n", std::string(buffer3, 6));
-
-        // 测试无效 seek
-        assert(!stream.seek_read_position(100));
-        fmt::print("  ✓ 无效seek测试通过\n");
-
-        fmt::print("✅ 测试8 全部通过\n");
-        return true;
-    } catch (const std::exception& e) {
-        fmt::print("❌ 测试8 失败: {}\n", e.what());
-        return false;
+        // 查找超出范围
+        auto pos5 = stream.find(1, 20);
+        assert(!pos5);
     }
-}
 
-// 测试9: compact 操作测试
-bool test_compact_operation() {
-    fmt::print("\n🧪 测试9: compact 操作测试\n");
+    static void test_copy_operations() {
+        memory_stream stream(block_sizes::Bytes_256);
 
-    try {
-        memory_stream stream(8);
+        // 准备数据
+        std::vector<unsigned char> original(100);
+        for (size_t i = 0; i < original.size(); ++i) {
+            original[i] = static_cast<unsigned char>(i % 256);
+        }
+        stream.write(original.data(), original.size());
 
-        // 写入并消费，制造碎片
-        std::string data = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-        stream.write(
-            reinterpret_cast<const memory_stream::value_type*>(data.c_str()),
-            26);
+        // 拷贝整个流到vector
+        auto vec1 = stream.copy_to_vector();
+        assert(vec1.size() == 100);
+        assert(compare_vectors(vec1, original));
 
-        // 消费部分数据
-        stream.consume(nullptr, 6);  // 消费 ABCDEF
-
-        size_t before_compact = stream.chunk_count();
-        auto stats_before = stream.get_chunk_stats();
-
-        fmt::print("  compact前:\n");
-        fmt::print("    块数: {}\n", before_compact);
-        fmt::print("    总大小: {} 字节\n", stream.size());
-        fmt::print("    使用统计:\n");
-        for (const auto& stat : stats_before) {
-            fmt::print("      块 {}: {}/{} 字节\n", stat.chunk_index,
-                       stat.data_size, stat.capacity);
+        // 从当前位置拷贝
+        stream.seek(20);
+        auto vec2 = stream.copy_from_current(30);
+        assert(vec2.size() == 30);
+        for (size_t i = 0; i < 30; ++i) {
+            assert(vec2[i] == original[20 + i]);
         }
 
-        // 执行 compact
-        stream.compact();
+        // 拷贝超出范围
+        stream.seek(90);
+        auto vec3 = stream.copy_from_current(20);
+        assert(vec3.size() == 10);  // 只有10个字节可拷贝
 
-        size_t after_compact = stream.chunk_count();
-        auto stats_after = stream.get_chunk_stats();
+        // 比较相等性
+        memory_stream stream2(block_sizes::Bytes_256);
+        stream2.write(original.data(), original.size());
+        assert(stream.equals(stream2));
 
-        fmt::print("  compact后:\n");
-        fmt::print("    块数: {}\n", after_compact);
-        fmt::print("    总大小: {} 字节\n", stream.size());
-        fmt::print("    使用统计:\n");
-        for (const auto& stat : stats_after) {
-            fmt::print("      块 {}: {}/{} 字节\n", stat.chunk_index,
-                       stat.data_size, stat.capacity);
-        }
-
-        // 验证数据
-        std::vector<memory_stream::value_type> result(stream.size());
-        size_t read = stream.read(result.data(), result.size());
-        assert(read == 20);
-        assert(std::string(result.begin(), result.end()) ==
-               "GHIJKLMNOPQRSTUVWXYZ");
-
-        fmt::print("  ✓ 数据验证通过: '{}'\n",
-                   std::string(result.begin(), result.end()));
-
-        // 验证块数应该减少
-        assert(after_compact <= before_compact);
-
-        fmt::print("✅ 测试9 全部通过\n");
-        return true;
-    } catch (const std::exception& e) {
-        fmt::print("❌ 测试9 失败: {}\n", e.what());
-        return false;
+        // 不同数据的比较
+        memory_stream stream3(block_sizes::Bytes_256);
+        stream3.write(original.data(), 50);
+        assert(!stream.equals(stream3));
     }
-}
 
-// 测试10: trim 操作测试
-bool test_trim_operation() {
-    fmt::print("\n🧪 测试10: trim 操作测试\n");
+    static void test_skip_operations() {
+        memory_stream stream(block_sizes::Bytes_128);
 
-    try {
-        memory_stream stream(8);
+        // 准备数据
+        std::vector<unsigned char> data(50);
+        for (size_t i = 0; i < data.size(); ++i) {
+            data[i] = static_cast<unsigned char>(i + 1);
+        }
+        stream.write(data.data(), data.size());
 
-        // 写入数据
-        std::string data = "12345678901234567890";
-        stream.write(
-            reinterpret_cast<const memory_stream::value_type*>(data.c_str()),
-            20);
+        // skip
+        assert(stream.skip(10));
+        assert(stream.tell() == 10);
 
-        fmt::print("  初始: {} 字节, {} 个块\n", stream.size(),
-                   stream.chunk_count());
+        // 验证跳过后的读取
+        unsigned char buffer[5];
+        size_t read = stream.read(buffer, 5);
+        assert(read == 5);
+        for (size_t i = 0; i < 5; ++i) {
+            assert(buffer[i] == data[10 + i]);
+        }
 
-        // 消费所有数据
-        stream.consume(nullptr, 20);
+        // skip_until
+        stream.rewind();
+        auto pos = stream.skip_until(25);
+        assert(pos && *pos == 24);  // 值25在位置24
+        assert(stream.tell() == 24);
 
-        fmt::print("  消费后: {} 字节, {} 个块\n", stream.size(),
-                   stream.chunk_count());
-        assert(stream.empty());
-        assert(stream.chunk_count() > 0);  // 应该还有空块
+        // skip_until 找不到
+        stream.rewind();
+        pos = stream.skip_until(100);
+        assert(!pos);
+        assert(stream.tell() == 0);  // 位置不变
 
-        // 执行 trim
-        stream.trim();
-
-        fmt::print("  trim后: {} 字节, {} 个块\n", stream.size(),
-                   stream.chunk_count());
-        assert(stream.empty());
-        assert(stream.chunk_count() == 0);  // trim 后应该没有块了
-
-        // 测试 trim 后可以重新写入
-        bool write_success = stream.write_byte('X');
-        assert(write_success);
-        assert(stream.size() == 1);
-        assert(stream.chunk_count() == 1);
-
-        fmt::print("  ✓ trim后重新写入测试通过\n");
-        fmt::print("✅ 测试10 全部通过\n");
-        return true;
-    } catch (const std::exception& e) {
-        fmt::print("❌ 测试10 失败: {}\n", e.what());
-        return false;
+        // skip 超出范围
+        assert(!stream.skip(100));
     }
-}
 
-// 测试11: 边界条件测试
-bool test_edge_cases() {
-    fmt::print("\n🧪 测试11: 边界条件测试\n");
+    static void test_edge_cases() {
+        // 空流测试
+        memory_stream empty_stream(block_sizes::Bytes_64);
 
-    try {
-        // 测试1: 空流操作
-        {
-            memory_stream stream(16);
+        assert(empty_stream.empty());
+        assert(empty_stream.read(nullptr, 10) == 0);
+        assert(!empty_stream.read_byte());
+        assert(!empty_stream.peek_byte(0));
+        assert(empty_stream.peek(0, nullptr, 10) == 0);
+        assert(!empty_stream.seek(1));
+        assert(empty_stream.tell() == 0);
+        assert(!empty_stream.front());
+        assert(!empty_stream.back());
+        assert(!empty_stream.find(0));
+        assert(empty_stream.copy_to_vector().empty());
+        assert(!empty_stream.skip(1));
 
-            assert(stream.read_byte() == std::nullopt);
-            assert(stream.read(nullptr, 10) == 0);
-            assert(stream.peek(nullptr, 10) == 0);
+        // 写入空数据
+        memory_stream stream(block_sizes::Bytes_128);
+        assert(stream.write(nullptr, 0) == 0);
+        assert(stream.write(nullptr, 10) == 0);
 
-            auto front = stream.front();
-            auto back = stream.back();
-            assert(!front.has_value());
-            assert(!back.has_value());
+        unsigned char data[5] = {1, 2, 3, 4, 5};
+        assert(stream.write(data, 0) == 0);
 
-            fmt::print("  ✓ 空流操作测试通过\n");
-        }
+        // peek 空指针
+        assert(stream.peek(0, nullptr, 10) == 0);
 
-        // 测试2: 零长度操作
-        {
-            memory_stream stream(16);
-
-            assert(stream.write(nullptr, 0) == 0);
-            assert(
-                stream.write(
-                    reinterpret_cast<const memory_stream::value_type*>("test"),
-                    0) == 0);
-            assert(stream.fill(0xFF, 0) == 0);
-
-            fmt::print("  ✓ 零长度操作测试通过\n");
-        }
-
-        // 测试3: 写入 nullptr
-        {
-            memory_stream stream(16);
-
-            size_t written = stream.write(nullptr, 10);
-            assert(written == 0);
-            assert(stream.size() == 0);
-
-            fmt::print("  ✓ nullptr写入测试通过\n");
-        }
-
-        // 测试4: 缓冲区满的情况
-        {
-            memory_stream stream(8);
-
-            // 写入刚好填满的数据
-            std::string data = "12345678";
-            size_t written =
-                stream.write(reinterpret_cast<const memory_stream::value_type*>(
-                                 data.c_str()),
-                             8);
-            assert(written == 8);
-            assert(stream.full() ==
-                   false);  // memory_stream 没有 full() 方法，memory_chunk 才有
-            assert(stream.size() == 8);
-
-            // 尝试写入更多数据
-            written = stream.write(
-                reinterpret_cast<const memory_stream::value_type*>("9"), 1);
-            assert(written == 1);
-            assert(stream.size() == 9);
-            assert(stream.chunk_count() == 2);
-
-            fmt::print("  ✓ 缓冲区满测试通过\n");
-        }
-
-        // 测试5: 大容量流
-        {
-            memory_stream stream(static_cast<size_t>(block_sizes::MB_1));
-            assert(stream.chunk_capacity() == 1024 * 1024);
-
-            // 写入少量数据
-            std::string data = "Small data in large chunk";
-            stream.write(reinterpret_cast<const memory_stream::value_type*>(
-                             data.c_str()),
-                         data.size());
-
-            fmt::print("  ✓ 大容量流测试通过 (块大小: {} MB)\n",
-                       stream.chunk_capacity() / (1024 * 1024));
-        }
-
-        fmt::print("✅ 测试11 全部通过\n");
-        return true;
-    } catch (const std::exception& e) {
-        fmt::print("❌ 测试11 失败: {}\n", e.what());
-        return false;
+        // 读取位置在末尾时的操作
+        stream.write(data, 5);
+        stream.seek(5);
+        assert(stream.eof());
+        assert(stream.read(data, 5) == 0);
+        assert(!stream.read_byte());
     }
-}
 
-// 测试12: 性能测试
-bool test_performance() {
-    fmt::print("\n🧪 测试12: 性能测试\n");
+    static void test_large_data() {
+        memory_stream stream(block_sizes::KB_1);
 
-    try {
-        const size_t chunk_size = 4096;         // 4KB
-        const size_t total_size = 1024 * 1024;  // 1MB
-
-        memory_stream stream(chunk_size);
-
-        fmt::print("  配置: 块大小={}字节, 总数据={}字节\n", chunk_size,
-                   total_size);
-
-        // 准备测试数据
-        std::vector<memory_stream::value_type> data(total_size);
-        for (size_t i = 0; i < total_size; ++i) {
-            data[i] = static_cast<memory_stream::value_type>(i % 256);
+        // 写入大量数据
+        const size_t large_size = 5000;  // 5KB，超过一个chunk
+        std::vector<unsigned char> large_data(large_size);
+        for (size_t i = 0; i < large_size; ++i) {
+            large_data[i] = static_cast<unsigned char>(i % 256);
         }
 
-        // 写入性能测试
-        auto start_write = std::chrono::high_resolution_clock::now();
-        size_t written = stream.write(data.data(), total_size);
-        auto end_write = std::chrono::high_resolution_clock::now();
-        auto write_duration =
-            std::chrono::duration<double>(end_write - start_write);
+        size_t written = stream.write(large_data.data(), large_size);
+        assert(written == large_size);
+        assert(stream.size() == large_size);
+        assert(stream.chunk_count() >= 5);  // 至少5个chunk
 
-        assert(written == total_size);
-        fmt::print("  写入: {} 字节, 用时: {:.3f}秒, 速度: {:.2f} MB/s\n",
-                   written, write_duration.count(),
-                   (total_size / (1024.0 * 1024.0)) / write_duration.count());
+        // 读取大量数据
+        std::vector<unsigned char> read_buffer(large_size);
+        size_t read = stream.read(read_buffer.data(), large_size);
+        assert(read == large_size);
 
-        // 读取性能测试
-        std::vector<memory_stream::value_type> read_buffer(total_size);
-
-        auto start_read = std::chrono::high_resolution_clock::now();
-        size_t total_read = 0;
-        const size_t read_chunk_size = 8192;  // 8KB
-
-        while (total_read < total_size) {
-            size_t to_read = std::min(read_chunk_size, total_size - total_read);
-            size_t read = stream.read(read_buffer.data() + total_read, to_read);
-            total_read += read;
+        // 验证数据一致性
+        for (size_t i = 0; i < large_size; ++i) {
+            assert(read_buffer[i] == large_data[i]);
         }
 
-        auto end_read = std::chrono::high_resolution_clock::now();
-        auto read_duration =
-            std::chrono::duration<double>(end_read - start_read);
-
-        assert(total_read == total_size);
-        fmt::print("  读取: {} 字节, 用时: {:.3f}秒, 速度: {:.2f} MB/s\n",
-                   total_read, read_duration.count(),
-                   (total_size / (1024.0 * 1024.0)) / read_duration.count());
-
-        // 验证数据
-        assert(std::equal(data.begin(), data.end(), read_buffer.begin()));
-        fmt::print("  ✓ 数据完整性验证通过\n");
-
-        // 显示统计信息
-        auto stats = stream.get_chunk_stats();
-        size_t total_chunks = stats.size();
-        double avg_usage = 0;
-
-        for (const auto& stat : stats) {
-            avg_usage += stat.usage_percent;
-        }
-        avg_usage /= total_chunks;
-
-        fmt::print("  块统计: {} 个块, 平均使用率: {:.1f}%\n", total_chunks,
-                   avg_usage);
-
-        fmt::print("✅ 测试12 全部通过\n");
-        return true;
-    } catch (const std::exception& e) {
-        fmt::print("❌ 测试12 失败: {}\n", e.what());
-        return false;
-    }
-}
-
-// 测试13: 综合场景测试
-bool test_integration_scenario() {
-    fmt::print("\n🧪 测试13: 综合场景测试\n");
-
-    try {
-        // 模拟一个简单的网络数据包处理场景
-        memory_stream network_stream(
-            static_cast<size_t>(block_sizes::NetworkPacketSize));
-
-        fmt::print("  场景: 网络数据包处理 (块大小: {} KB)\n",
-                   network_stream.chunk_capacity() / 1024);
-
-        // 模拟接收多个数据包
-        std::vector<std::string> packets = {
-            "PACKET1:Header:Data1:Data2:Data3",
-            "PACKET2:Header:Data4:Data5:Data6:Data7",
-            "PACKET3:Header:Data8:Data9",
-            "PACKET4:Header:Data10:Data11:Data12:Data13:Data14"};
-
-        fmt::print("  接收数据包:\n");
-        for (const auto& packet : packets) {
-            size_t written = network_stream.write(
-                reinterpret_cast<const memory_stream::value_type*>(
-                    packet.c_str()),
-                packet.size());
-            fmt::print("    ✓ 数据包: {} 字节\n", written);
-        }
-
-        fmt::print("  当前状态: {} 字节, {} 个块\n", network_stream.size(),
-                   network_stream.chunk_count());
-
-        // 模拟协议解析
-        const char delimiter = ':';
-        std::vector<std::string> parsed_packets;
-
-        while (!network_stream.empty()) {
-            std::string current_packet;
-
-            while (true) {
-                auto byte_opt = network_stream.read_byte();
-                if (!byte_opt) {
-                    break;  // 没有数据了
-                }
-
-                char ch = static_cast<char>(byte_opt.value());
-                if (ch == delimiter) {
-                    // 分隔符，一个字段结束
-                    if (!current_packet.empty()) {
-                        parsed_packets.push_back(current_packet);
-                        current_packet.clear();
-                    }
-                } else {
-                    current_packet.push_back(ch);
-                }
-
-                // 简单限制，防止无限循环
-                if (current_packet.size() > 100) {
-                    break;
-                }
-            }
-
-            if (!current_packet.empty()) {
-                parsed_packets.push_back(current_packet);
-            }
-        }
-
-        fmt::print("  解析结果 ({} 个字段):\n", parsed_packets.size());
-        for (size_t i = 0; i < std::min<size_t>(10, parsed_packets.size());
-             ++i) {
-            fmt::print("    [{:2d}] {}\n", i, parsed_packets[i]);
-        }
-        if (parsed_packets.size() > 10) {
-            fmt::print("    ... 还有 {} 个字段\n", parsed_packets.size() - 10);
-        }
-
-        // 验证解析结果
-        size_t expected_fields = 0;
-        for (const auto& packet : packets) {
-            expected_fields +=
-                std::count(packet.begin(), packet.end(), ':') + 1;
-        }
-
-        assert(parsed_packets.size() == expected_fields);
-        fmt::print("  ✓ 字段数量验证通过: {} 个字段\n", parsed_packets.size());
-
-        // 显示最终统计
-        fmt::print("  最终状态: {} 字节, {} 个块\n", network_stream.size(),
-                   network_stream.chunk_count());
-
-        fmt::print("✅ 测试13 全部通过\n");
-        return true;
-    } catch (const std::exception& e) {
-        fmt::print("❌ 测试13 失败: {}\n", e.what());
-        return false;
-    }
-}
-
-// 主测试函数
-void run_all_tests() {
-    fmt::print("{:=^60}\n", " memory_stream 测试套件 ");
-    fmt::print("开始运行所有测试...\n");
-
-    bool all_passed = true;
-    int test_count = 0;
-    int passed_count = 0;
-
-    // 定义测试函数列表
-    using TestFunc = bool (*)();
-    std::vector<std::pair<std::string, TestFunc>> tests = {
-        {"基本构造和查询", test_basic_construction},
-        {"小数据写入和读取", test_small_data_io},
-        {"跨块大数据写入", test_large_data_cross_chunks},
-        {"逐字节操作", test_byte_by_byte_operations},
-        {"批量填充操作", test_fill_operation},
-        {"迭代器测试", test_iterators},
-        {"消费操作测试", test_consume_operation},
-        {"seek和位置操作", test_seek_and_position},
-        {"compact操作测试", test_compact_operation},
-        {"trim操作测试", test_trim_operation},
-        {"边界条件测试", test_edge_cases},
-        {"性能测试", test_performance},
-        {"综合场景测试", test_integration_scenario},
-    };
-
-    // 运行所有测试
-    for (const auto& [test_name, test_func] : tests) {
-        ++test_count;
-        fmt::print("\n[{}/{}] 运行测试: {}\n", test_count, tests.size(),
-                   test_name);
-
-        try {
-            if (test_func()) {
-                ++passed_count;
-                fmt::print("🎉 测试通过: {}\n", test_name);
-            } else {
-                all_passed = false;
-                fmt::print("💥 测试失败: {}\n", test_name);
-            }
-        } catch (const std::exception& e) {
-            all_passed = false;
-            fmt::print("💥 测试异常: {} - {}\n", test_name, e.what());
+        // 测试跨chunk的peek
+        stream.rewind();
+        unsigned char buffer[1500];  // 跨多个chunk
+        size_t peeked = stream.peek(500, buffer, 1500);
+        assert(peeked == 1500);
+        for (size_t i = 0; i < 1500; ++i) {
+            assert(buffer[i] == large_data[500 + i]);
         }
     }
 
-    // 显示测试结果摘要
-    fmt::print("\n{:=^60}\n", " 测试结果摘要 ");
-    fmt::print("总计: {} 个测试\n", test_count);
-    fmt::print("通过: {} 个\n", passed_count);
-    fmt::print("失败: {} 个\n", test_count - passed_count);
+    static void test_mixed_operations() {
+        memory_stream stream(block_sizes::Bytes_256);
 
-    if (all_passed) {
-        fmt::print("\n🎉🎉🎉 所有测试通过! 🎉🎉🎉\n");
-    } else {
-        fmt::print("\n❌❌❌ 有测试失败! ❌❌❌\n");
+        // 混合写入操作
+        assert(stream.write_byte(1));
+
+        unsigned char data1[] = {2, 3, 4};
+        assert(stream.write(data1, 3) == 3);
+
+        assert(stream.fill(5, 3) == 3);
+
+        // 当前数据: 1, 2, 3, 4, 5, 5, 5
+        assert(stream.size() == 7);
+
+        // 混合读取操作
+        unsigned char buffer[4];
+        assert(stream.read(buffer, 2) == 2);
+        assert(buffer[0] == 1 && buffer[1] == 2);
+        assert(stream.tell() == 2);
+
+        // peek
+        assert(stream.peek(3, buffer, 3) == 3);
+        assert(buffer[0] == 4 && buffer[1] == 5 && buffer[2] == 5);
+        assert(stream.tell() == 2);  // peek不移动位置
+
+        // 读取单个字节
+        auto byte = stream.read_byte();
+        assert(byte && *byte == 3);
+        assert(stream.tell() == 3);
+
+        // seek和读取
+        assert(stream.seek(5));
+        byte = stream.read_byte();
+        assert(byte && *byte == 5);
+
+        // 再次写入
+        unsigned char data2[] = {6, 7, 8};
+        assert(stream.write(data2, 3) == 3);
+
+        // 总数据: 1, 2, 3, 4, 5, 5, 5, 6, 7, 8
+        assert(stream.size() == 10);
+
+        // 混合查找和跳过
+        stream.rewind();
+        auto pos = stream.skip_until(5);
+        assert(pos && *pos == 4);  // 第一个5在位置4
+        assert(stream.tell() == 4);
+
+        // 拷贝当前数据
+        auto vec = stream.copy_from_current(3);
+        assert(vec.size() == 3);
+        assert(vec[0] == 5 && vec[1] == 5 && vec[2] == 5);
     }
-    fmt::print("{:=^60}\n", "");
-}
+};

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -10,57 +11,15 @@
 
 class memory_stream {
    public:
-    using value_type = memory_chunk::value_type;
+    using value_type = unsigned char;
     using size_type = std::size_t;
+    using chunk_type = memory_chunk;
     using chunk_size_type = block_sizes;
 
-   private:
-    // 链表节点结构
-    struct chunk_node {
-        memory_chunk chunk;                // 内存块
-        std::unique_ptr<chunk_node> next;  // 下一个节点
-
-        // 构造函数
-        explicit chunk_node(size_type capacity);
-    };
-
-    // 迭代器
-    struct iterator {
-        chunk_node* node = nullptr;
-        size_type pos_in_node = 0;
-
-        bool operator==(const iterator& other) const;
-        bool operator!=(const iterator& other) const;
-        iterator& operator++();
-        iterator operator++(int);
-        value_type operator*() const;
-    };
-
-    struct const_iterator {
-        const chunk_node* node = nullptr;
-        size_type pos_in_node = 0;
-
-        bool operator==(const const_iterator& other) const;
-        bool operator!=(const const_iterator& other) const;
-        const_iterator& operator++();
-        const_iterator operator++(int);
-        value_type operator*() const;
-    };
-
-   private:
-    std::unique_ptr<chunk_node> head_;         // 链表头
-    chunk_node* tail_ = nullptr;               // 链表尾（用于快速追加）
-    chunk_node* current_read_node_ = nullptr;  // 当前读取节点
-    size_type current_read_pos_ = 0;           // 当前读取位置
-    size_type total_size_ = 0;                 // 总数据大小
-    size_type chunk_capacity_;                 // 每个块的固定容量
-
-   public:
     // 构造函数
-    explicit memory_stream(size_type chunk_capacity = static_cast<size_type>(
-                               block_sizes::DefaultChunkSize));
-
-    explicit memory_stream(chunk_size_type chunk_size);
+    explicit memory_stream(
+        chunk_size_type chunk_size = block_sizes::DefaultChunkSize);
+    explicit memory_stream(size_type chunk_capacity);
 
     // 禁止拷贝
     memory_stream(const memory_stream&) = delete;
@@ -72,12 +31,9 @@ class memory_stream {
     // 移动赋值
     memory_stream& operator=(memory_stream&& other) noexcept;
 
-    // 析构函数
-    ~memory_stream();
+    // --- 核心操作 ---
 
-    // --- 主要操作 ---
-
-    // 写入数据到流末尾
+    // 写入数据（末尾追加）
     size_type write(const value_type* data, size_type count);
 
     // 写入单个字节
@@ -86,80 +42,121 @@ class memory_stream {
     // 批量写入相同字节
     size_type fill(value_type byte, size_type count);
 
-    // 从流中读取数据
+    // --- 读取操作（不改变数据，只移动读取指针）---
+
+    // 从当前位置读取数据
     size_type read(value_type* buffer, size_type count);
 
-    // 读取数据但不移除
-    size_type peek(value_type* buffer, size_type count) const;
-
-    // 从当前位置读取单个字节
+    // 读取单个字节
     std::optional<value_type> read_byte();
 
-    // 读取并移除数据
-    size_type consume(value_type* buffer, size_type count);
+    // 从指定位置读取数据（不改变读取指针）
+    size_type peek(size_type pos, value_type* buffer, size_type count) const;
 
-    // 重置读取位置
-    void reset_read_position();
+    // peek单个字节（不改变读取指针）
+    std::optional<value_type> peek_byte(size_type pos) const;
 
-    // 跳转到指定位置
-    bool seek_read_position(size_type pos);
+    // 设置读取位置
+    bool seek(size_type new_pos);
+
+    // 获取当前读取位置
+    size_type tell() const noexcept;
+
+    // 将读取位置重置到开头
+    void rewind() noexcept;
+
+    // 清除所有数据
+    void clear() noexcept;
 
     // --- 查询操作 ---
 
-    // 获取总大小
-    size_type size() const noexcept;
+    // 获取指定位置的字节
+    std::optional<value_type> at(size_type pos) const;
 
-    // 获取块数
+    // 获取第一个字节
+    std::optional<value_type> front() const;
+
+    // 获取最后一个字节
+    std::optional<value_type> back() const;
+
+    // 是否可读取更多数据
+    bool can_read() const noexcept;
+
+    // 剩余可读取字节数
+    size_type readable_bytes() const noexcept;
+
+    // 是否到达末尾
+    bool eof() const noexcept;
+
+    // --- 容量查询 ---
+
+    size_type size() const noexcept;
+    bool empty() const noexcept;
+    size_type chunk_capacity() const noexcept;
     size_type chunk_count() const noexcept;
 
-    // 检查是否为空
-    bool empty() const noexcept;
+    // --- 高级功能 ---
 
-    // 获取块容量
-    size_type chunk_capacity() const noexcept;
+    // 拷贝数据到vector
+    std::vector<value_type> copy_to_vector() const;
 
-    // --- 清理操作 ---
+    // 从当前位置拷贝指定数量的数据到vector
+    std::vector<value_type> copy_from_current(size_type count) const;
 
-    // 清空流
-    void clear();
+    // 查找字节
+    std::optional<size_type> find(value_type byte,
+                                  size_type start_pos = 0) const;
 
-    // 清除已读取的数据
-    void trim();
+    // 查找字节（从当前位置开始）
+    std::optional<size_type> find_from_current(value_type byte) const;
 
-    // --- 迭代器支持 ---
+    // 比较两个stream的内容
+    bool equals(const memory_stream& other) const;
 
-    iterator begin();
-    const_iterator begin() const;
-    iterator end();
-    const_iterator end() const;
-    const_iterator cbegin() const;
-    const_iterator cend() const;
+    // 跳过指定字节数
+    bool skip(size_type count);
 
-    // --- 高级操作 ---
-
-    // 获取所有数据到一个连续缓冲区
-    std::vector<value_type> to_vector() const;
-
-    // 合并所有块（压缩）
-    void compact();
-
-    // 获取块使用统计
-    struct chunk_stats {
-        size_type chunk_index;
-        size_type data_size;
-        size_type capacity;
-        double usage_percent;
-    };
-
-    std::vector<chunk_stats> get_chunk_stats() const;
+    // 跳过字节直到找到特定字节
+    std::optional<size_type> skip_until(value_type byte);
 
    private:
-    // 确保有可写的块
-    bool ensure_write_block();
+    // 链表节点结构
+    struct chunk_node {
+        chunk_type chunk;
+        std::shared_ptr<chunk_node> next = nullptr;
 
-    // 添加新块
-    void add_new_chunk();
+        explicit chunk_node(size_type chunk_size);
 
-    // 移除第一个块
-    void remove_front_chunk();
+        // chunk在整个流中的起始位置
+        size_type global_start = 0;
+
+        // 设置全局起始位置
+        void set_global_start(size_type start) { global_start = start; }
+    };
+
+    std::shared_ptr<chunk_node> head_ = nullptr;
+    std::shared_ptr<chunk_node> tail_ = nullptr;
+    size_type total_size_ = 0;      // 总数据大小
+    size_type read_pos_ = 0;        // 当前读取位置
+    size_type chunk_capacity_ = 0;  // 每个chunk的容量
+    size_type chunk_count_ = 0;     // chunk数量
+
+    // 当前读取位置所在的chunk（缓存以提高性能）
+    std::shared_ptr<chunk_node> read_chunk_ = nullptr;
+    size_type read_offset_in_chunk_ = 0;  // 在当前chunk中的偏移量
+
+    // 创建新的chunk节点
+    void create_new_chunk();
+
+    // 查找包含指定位置的chunk及其偏移量
+    std::pair<std::shared_ptr<chunk_node>, size_type> find_chunk_with_offset(
+        size_type pos) const;
+
+    // 更新读取位置缓存
+    void update_read_cache();
+
+    // 从指定chunk和偏移量开始读取
+    size_type read_from_chunk(std::shared_ptr<chunk_node> start_chunk,
+                              size_type offset_in_chunk, value_type* buffer,
+                              size_type count) const;
 };
