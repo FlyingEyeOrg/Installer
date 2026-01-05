@@ -126,15 +126,26 @@ bool window_base::register_class(const std::wstring& class_name,
     wc.cbClsExtra = 0;
     wc.cbWndExtra = 0;
     wc.hInstance = instance;
-    wc.hIcon = window_style.icon ? window_style.icon
-                                 : LoadIconW(nullptr, IDI_APPLICATION);
-    wc.hCursor = window_style.cursor ? window_style.cursor
-                                     : LoadCursorW(nullptr, IDC_ARROW);
+
+    // 使用 MAKEINTRESOURCEW 加载系统图标和光标
+    wc.hIcon =
+        window_style.icon
+            ? window_style.icon
+            : LoadIconW(nullptr, MAKEINTRESOURCEW(
+                                     32512));  // IDI_APPLICATION 的宽字符版本
+    wc.hCursor =
+        window_style.cursor
+            ? window_style.cursor
+            : LoadCursorW(nullptr,
+                          MAKEINTRESOURCEW(32512));  // IDC_ARROW 的宽字符版本
     wc.hbrBackground = window_style.background;
     wc.lpszMenuName = nullptr;
     wc.lpszClassName = class_name.c_str();
-    wc.hIconSm = window_style.icon_small ? window_style.icon_small
-                                         : LoadIconW(nullptr, IDI_APPLICATION);
+    wc.hIconSm =
+        window_style.icon_small
+            ? window_style.icon_small
+            : LoadIconW(nullptr, MAKEINTRESOURCEW(
+                                     32512));  // IDI_APPLICATION 的宽字符版本
 
     return RegisterClassExW(&wc) != 0;
 }
