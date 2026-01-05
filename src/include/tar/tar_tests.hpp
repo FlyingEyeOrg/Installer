@@ -124,13 +124,19 @@ void test_single_file() {
         tar::writer w;
         w.add_file(test_file);
 
-        // 获取数据大小
-        auto data_size = w.size();
-        print_info(fmt::format("内存中的数据大小: {} bytes", data_size));
+        // 在 finish 之前获取数据大小
+        auto data_size_before_finish = w.size();
+        print_info(fmt::format("finish 前的数据大小: {} bytes",
+                               data_size_before_finish));
 
         // 保存到文件
         print_subsection("将内存数据写入文件");
         w.write_to_file(archive_path);
+
+        // 在 finish 之后获取数据大小
+        auto data_size_after_finish = w.size();
+        print_info(fmt::format("finish 后的数据大小: {} bytes",
+                               data_size_after_finish));
 
         // 列出压缩包内容
         print_subsection("列出压缩包内容");
@@ -156,12 +162,13 @@ void test_single_file() {
         std::string str_data = w.get_data();
         std::vector<char> vec_data = w.get_vector();
 
-        if (str_data.size() == data_size && vec_data.size() == data_size) {
+        if (str_data.size() == data_size_after_finish &&
+            vec_data.size() == data_size_after_finish) {
             print_success("数据获取接口测试通过");
         } else {
-            print_error(
-                fmt::format("数据大小不匹配: str={}, vec={}, expected={}",
-                            str_data.size(), vec_data.size(), data_size));
+            print_error(fmt::format(
+                "数据大小不匹配: str={}, vec={}, expected={}", str_data.size(),
+                vec_data.size(), data_size_after_finish));
         }
 
     } catch (const std::exception& e) {
@@ -207,6 +214,10 @@ void test_multiple_files() {
         // 保存到文件
         print_subsection("将内存数据写入文件");
         w.write_to_file(archive_path);
+
+        // 重新获取 finish 后的数据大小
+        data_size = w.size();
+        print_info(fmt::format("finish 后的数据大小: {} bytes", data_size));
 
         // 列出压缩包内容
         print_subsection("列出压缩包内容");
@@ -276,11 +287,15 @@ void test_directory() {
 
         // 获取数据大小
         auto data_size = w.size();
-        print_info(fmt::format("内存中的数据大小: {} bytes", data_size));
+        print_info(fmt::format("finish 前的数据大小: {} bytes", data_size));
 
         // 保存到文件
         print_subsection("将内存数据写入文件");
         w.write_to_file(archive_path);
+
+        // 重新获取 finish 后的数据大小
+        data_size = w.size();
+        print_info(fmt::format("finish 后的数据大小: {} bytes", data_size));
 
         // 列出压缩包内容
         print_subsection("列出压缩包内容");
@@ -349,11 +364,15 @@ void test_large_file() {
 
         // 获取数据大小
         auto data_size = w.size();
-        print_info(fmt::format("内存中的数据大小: {} bytes", data_size));
+        print_info(fmt::format("finish 前的数据大小: {} bytes", data_size));
 
         // 保存到文件
         print_subsection("将内存数据写入文件");
         w.write_to_file(archive_path);
+
+        // 重新获取 finish 后的数据大小
+        data_size = w.size();
+        print_info(fmt::format("finish 后的数据大小: {} bytes", data_size));
 
         // 解压大文件
         print_subsection("解压大文件");
@@ -410,7 +429,12 @@ void test_error_handling() {
         print_subsection("测试写入不存在的目录");
         try {
             tar::writer w;
-            w.add_file("existing_file.txt");  // 假设这个文件存在
+            // 先添加一个文件
+            const fs::path temp_file = "temp_test_file.txt";
+            create_test_file(temp_file, "test");
+            w.add_file(temp_file);
+            fs::remove(temp_file);
+
             w.write_to_file("nonexistent/path/test.tar");
             print_error("应该抛出异常但没有！");
         } catch (const std::exception& e) {
@@ -468,14 +492,24 @@ void test_writer_class() {
         print_subsection("测试 clear 方法");
         w.clear();
         assert(w.empty());
+        assert(w.size() == 0);
         print_info(fmt::format("clear 后数据大小: {} bytes", w.size()));
 
         // 重新添加数据
         w.add_file(test_dir / "test2.txt");
+        assert(!w.empty());
+        assert(w.size() > 0);
 
         // 验证压缩包
         print_subsection("验证压缩包内容");
         w.write_to_file(archive_path);
+        assert(fs::exists(archive_path));
+
+        // 测试 finish 后的数据大小
+        auto finished_size = w.size();
+        print_info(fmt::format("finish 后数据大小: {} bytes", finished_size));
+
+        // 列出内容
         tar::list_archive(archive_path);
 
         print_success("writer 类测试完成");
@@ -623,6 +657,14 @@ void cleanup() {
         } catch (...) {
             print_warning(fmt::format("无法删除目录: {}", dir));
         }
+    }
+
+    // 清理临时文件
+    try {
+        if (fs::exists("temp_test_file.txt")) {
+            fs::remove("temp_test_file.txt");
+        }
+    } catch (...) {
     }
 
     if (removed_count > 0) {
