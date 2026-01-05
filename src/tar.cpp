@@ -10,6 +10,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -83,7 +84,7 @@ bool is_zero_block(const header& hdr) {
     return true;
 }
 
-// writer 类方法定义
+// writer 类方法定义保持不变
 writer::writer() {
     // 初始化字符串流
     out_.exceptions(std::ios::badbit | std::ios::failbit);
@@ -399,20 +400,119 @@ std::size_t writer::size() const { return out_.str().size(); }
 
 bool writer::empty() const { return out_.str().empty(); }
 
-// reader 类方法定义保持不变
-reader::reader(const fs::path& archive_path)
-    : in_(archive_path, std::ios::binary) {
-    if (!in_) {
-        throw std::runtime_error("Cannot open archive: " +
-                                 archive_path.string());
+// reader 类方法定义
+reader::reader(const fs::path& archive_path) { set_source(archive_path); }
+
+reader::reader(std::unique_ptr<std::istream> stream) {
+    set_source(std::move(stream));
+}
+
+reader::reader(const std::string& data) { set_source(data); }
+
+reader::reader(const std::vector<char>& data) { set_source(data); }
+
+reader::reader(const char* data, std::size_t size) { set_source(data, size); }
+
+reader::reader(reader&& other) noexcept
+    : file_stream_(std::move(other.file_stream_)),
+      memory_stream_(std::move(other.memory_stream_)),
+      in_(other.in_) {
+    other.in_ = nullptr;
+}
+
+reader& reader::operator=(reader&& other) noexcept {
+    if (this != &other) {
+        cleanup();
+        file_stream_ = std::move(other.file_stream_);
+        memory_stream_ = std::move(other.memory_stream_);
+        in_ = other.in_;
+        other.in_ = nullptr;
+    }
+    return *this;
+}
+
+void reader::set_source(std::unique_ptr<std::istream> stream) {
+    cleanup();
+    memory_stream_ = std::move(stream);
+    in_ = memory_stream_.get();
+    if (in_) {
+        // 检查流是否有效
+        in_->seekg(0, std::ios::end);
+        std::streamsize size = in_->tellg();
+        in_->seekg(0, std::ios::beg);
+
+        if (size < 512) {  // 最小的tar文件至少有2个512字节的零块
+            throw std::runtime_error("Invalid tar data: data too small");
+        }
+
+        if (!*in_) {
+            throw std::runtime_error("Failed to set stream source");
+        }
     }
 }
 
-bool reader::read_header(header& hdr) {
-    in_.read(reinterpret_cast<char*>(&hdr), sizeof(header));
-    std::streamsize bytes_read = in_.gcount();
+void reader::set_source(const std::string& data) {
+    if (data.size() < 1024) {  // 最小的tar文件至少有2个512字节的零块
+        throw std::runtime_error("Invalid tar data: data too small");
+    }
+    set_source(std::make_unique<std::istringstream>(data));
+}
 
-    if (!in_ || bytes_read != sizeof(header)) {
+void reader::set_source(const std::vector<char>& data) {
+    if (data.size() < 1024) {  // 最小的tar文件至少有2个512字节的零块
+        throw std::runtime_error("Invalid tar data: data too small");
+    }
+    set_source(std::make_unique<std::istringstream>(
+        std::string(data.begin(), data.end())));
+}
+
+void reader::set_source(const char* data, std::size_t size) {
+    if (size < 1024) {  // 最小的tar文件至少有2个512字节的零块
+        throw std::runtime_error("Invalid tar data: data too small");
+    }
+    set_source(std::string(data, data + size));
+}
+
+void reader::set_source(const fs::path& archive_path) {
+    cleanup();
+    file_stream_ =
+        std::make_unique<std::ifstream>(archive_path, std::ios::binary);
+    if (!*file_stream_) {
+        throw std::runtime_error("Cannot open archive: " +
+                                 archive_path.string());
+    }
+
+    // 检查文件大小
+    file_stream_->seekg(0, std::ios::end);
+    std::streamsize size = file_stream_->tellg();
+    file_stream_->seekg(0, std::ios::beg);
+
+    if (size < 1024) {  // 最小的tar文件至少有2个512字节的零块
+        throw std::runtime_error("Invalid tar archive: file too small");
+    }
+
+    in_ = file_stream_.get();
+}
+
+bool reader::is_open() const { return in_ != nullptr && *in_; }
+
+void reader::close() { cleanup(); }
+
+void reader::cleanup() {
+    file_stream_.reset();
+    memory_stream_.reset();
+    in_ = nullptr;
+}
+
+bool reader::read_header(header& hdr) {
+    if (!in_) {
+        throw std::runtime_error("No data source is open");
+    }
+
+    in_->read(reinterpret_cast<char*>(&hdr), sizeof(header));
+    std::streamsize bytes_read = in_->gcount();
+
+    if (!*in_ || bytes_read != sizeof(header)) {
         return false;
     }
 
@@ -420,12 +520,12 @@ bool reader::read_header(header& hdr) {
     if (is_zero_block(hdr)) {
         // 再读一个头部，检查是否连续两个零块
         header next_hdr;
-        in_.read(reinterpret_cast<char*>(&next_hdr), sizeof(header));
+        in_->read(reinterpret_cast<char*>(&next_hdr), sizeof(header));
         if (is_zero_block(next_hdr)) {
             return false;  // 两个零块，文件结束
         }
         // 只有一个零块，回退
-        in_.seekg(-static_cast<std::streamoff>(sizeof(header)), std::ios::cur);
+        in_->seekg(-static_cast<std::streamoff>(sizeof(header)), std::ios::cur);
     }
 
     return true;
@@ -458,14 +558,18 @@ std::string reader::get_path(const header& hdr) {
 }
 
 void reader::skip_data(std::uintmax_t size) {
-    if (size == 0) return;
+    if (size == 0 || !in_) return;
 
     std::uintmax_t blocks = (size + 511) / 512;
     std::uintmax_t to_skip = blocks * 512;
-    in_.seekg(to_skip, std::ios::cur);
+    in_->seekg(to_skip, std::ios::cur);
 }
 
 void reader::extract_file(const fs::path& path, std::uintmax_t size) {
+    if (!in_) {
+        throw std::runtime_error("No data source is open");
+    }
+
     // 创建父目录
     fs::create_directories(path.parent_path());
 
@@ -484,8 +588,8 @@ void reader::extract_file(const fs::path& path, std::uintmax_t size) {
         std::size_t to_read = static_cast<std::size_t>(
             std::min<std::uintmax_t>(buffer_size, remaining));
 
-        in_.read(buffer, to_read);
-        std::streamsize bytes_read = in_.gcount();
+        in_->read(buffer, to_read);
+        std::streamsize bytes_read = in_->gcount();
 
         if (bytes_read <= 0) {
             throw std::runtime_error("Failed to read file data");
@@ -502,93 +606,129 @@ void reader::extract_file(const fs::path& path, std::uintmax_t size) {
     // 跳过填充字节
     std::size_t padding = (512 - (size % 512)) % 512;
     if (padding > 0) {
-        in_.seekg(padding, std::ios::cur);
+        in_->seekg(padding, std::ios::cur);
     }
 }
 
 void reader::extract_all(const fs::path& output_dir) {
+    if (!in_) {
+        throw std::runtime_error("No data source is open");
+    }
+
+    // 保存当前流位置
+    std::streampos original_pos = in_->tellg();
+    in_->seekg(0, std::ios::beg);
+
     header hdr;
 
-    while (read_header(hdr)) {
-        // 获取文件名
-        std::string filename = get_path(hdr);
-        if (filename.empty()) {
-            std::uintmax_t size = parse_octal(hdr.size, sizeof(hdr.size));
-            skip_data(size);
-            continue;
-        }
-
-        // 获取文件大小
-        std::uintmax_t size = parse_octal(hdr.size, sizeof(hdr.size));
-
-        // 获取文件类型
-        char typeflag = hdr.typeflag;
-
-        // 构建完整路径
-        fs::path full_path = output_dir / filename;
-
-        try {
-            switch (typeflag) {
-                case '0':   // 普通文件
-                case '\0':  // 旧格式的普通文件
-                    extract_file(full_path, size);
-                    break;
-
-                case '5':  // 目录
-                    fs::create_directories(full_path);
-                    if (size > 0) {
-                        skip_data(size);
-                    }
-                    break;
-
-                default:
-                    // 跳过不支持的文件类型
-                    skip_data(size);
-                    break;
+    try {
+        while (read_header(hdr)) {
+            // 获取文件名
+            std::string filename = get_path(hdr);
+            if (filename.empty()) {
+                std::uintmax_t size = parse_octal(hdr.size, sizeof(hdr.size));
+                skip_data(size);
+                continue;
             }
-        } catch (const std::exception& e) {
-            std::cerr << "Error extracting " << filename << ": " << e.what()
-                      << std::endl;
-            skip_data(size);
+
+            // 获取文件大小
+            std::uintmax_t size = parse_octal(hdr.size, sizeof(hdr.size));
+
+            // 获取文件类型
+            char typeflag = hdr.typeflag;
+
+            // 构建完整路径
+            fs::path full_path = output_dir / filename;
+
+            try {
+                switch (typeflag) {
+                    case '0':   // 普通文件
+                    case '\0':  // 旧格式的普通文件
+                        extract_file(full_path, size);
+                        break;
+
+                    case '5':  // 目录
+                        fs::create_directories(full_path);
+                        if (size > 0) {
+                            skip_data(size);
+                        }
+                        break;
+
+                    default:
+                        // 跳过不支持的文件类型
+                        skip_data(size);
+                        break;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "Error extracting " << filename << ": " << e.what()
+                          << std::endl;
+                skip_data(size);
+            }
         }
+    } catch (...) {
+        // 恢复流位置
+        in_->seekg(original_pos);
+        throw;
     }
+
+    // 恢复流位置以便后续读取
+    in_->seekg(original_pos);
 }
 
 void reader::list() {
+    if (!in_) {
+        throw std::runtime_error("No data source is open");
+    }
+
+    // 保存当前流位置
+    std::streampos original_pos = in_->tellg();
+    in_->seekg(0, std::ios::beg);
+
     header hdr;
 
     std::cout << "Type  Size      Modified             Name\n";
     std::cout << "----  --------  -------------------  ----\n";
 
-    while (read_header(hdr)) {
-        // 获取文件名
-        std::string filename = get_path(hdr);
-        if (filename.empty()) {
+    try {
+        while (read_header(hdr)) {
+            // 获取文件名
+            std::string filename = get_path(hdr);
+            if (filename.empty()) {
+                std::uintmax_t size = parse_octal(hdr.size, sizeof(hdr.size));
+                skip_data(size);
+                continue;
+            }
+
+            // 获取文件大小
             std::uintmax_t size = parse_octal(hdr.size, sizeof(hdr.size));
+
+            // 获取文件类型
+            char typeflag = hdr.typeflag;
+
+            // 获取修改时间
+            std::uintmax_t mtime_val =
+                parse_octal(hdr.mtime, sizeof(hdr.mtime));
+            std::time_t mtime = static_cast<std::time_t>(mtime_val);
+            char time_buf[20];
+            std::strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S",
+                          std::localtime(&mtime));
+
+            // 输出文件信息
+            std::cout << (typeflag == '5' ? "d" : "-") << "  " << std::setw(8)
+                      << size << "  " << time_buf << "  " << filename
+                      << std::endl;
+
+            // 跳过数据
             skip_data(size);
-            continue;
         }
-
-        // 获取文件大小
-        std::uintmax_t size = parse_octal(hdr.size, sizeof(hdr.size));
-
-        // 获取文件类型
-        char typeflag = hdr.typeflag;
-
-        // 获取修改时间
-        std::uintmax_t mtime_val = parse_octal(hdr.mtime, sizeof(hdr.mtime));
-        std::time_t mtime = static_cast<std::time_t>(mtime_val);
-        char time_buf[20];
-        std::strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S",
-                      std::localtime(&mtime));
-
-        // 输出文件信息
-        std::cout << (typeflag == '5' ? "d" : "-") << "  " << std::setw(8)
-                  << size << "  " << time_buf << "  " << filename << std::endl;
-
-        // 跳过数据
-        skip_data(size);
+    } catch (...) {
+        // 恢复流位置
+        in_->seekg(original_pos);
+        throw;
     }
+
+    // 恢复流位置
+    in_->seekg(original_pos);
 }
 
 // 便捷函数定义
@@ -618,8 +758,30 @@ void extract_archive(const fs::path& archive_path, const fs::path& output_dir) {
     r.extract_all(output_dir);
 }
 
+void extract_archive_from_memory(const std::string& data,
+                                 const fs::path& output_dir) {
+    reader r(data);
+    r.extract_all(output_dir);
+}
+
+void extract_archive_from_memory(const std::vector<char>& data,
+                                 const fs::path& output_dir) {
+    reader r(data);
+    r.extract_all(output_dir);
+}
+
 void list_archive(const fs::path& archive_path) {
     reader r(archive_path);
+    r.list();
+}
+
+void list_archive_from_memory(const std::string& data) {
+    reader r(data);
+    r.list();
+}
+
+void list_archive_from_memory(const std::vector<char>& data) {
+    reader r(data);
     r.list();
 }
 

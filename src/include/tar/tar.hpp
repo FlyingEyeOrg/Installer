@@ -3,6 +3,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -78,19 +79,60 @@ class writer {
 
 // tar 解包器类声明
 class reader {
+   public:
+    // 构造函数：从文件读取
+    explicit reader(const fs::path& archive_path);
+
+    // 构造函数：从字符串流读取
+    explicit reader(std::unique_ptr<std::istream> stream);
+
+    // 构造函数：从字符串读取
+    explicit reader(const std::string& data);
+
+    // 构造函数：从vector<char>读取
+    explicit reader(const std::vector<char>& data);
+
+    // 构造函数：从指针和大小读取
+    reader(const char* data, std::size_t size);
+
+    reader(const reader&) = delete;
+    reader& operator=(const reader&) = delete;
+
+    // 默认构造函数（创建空reader）
+    reader() = default;
+
+    // 移动构造函数
+    reader(reader&& other) noexcept;
+
+    // 移动赋值运算符
+    reader& operator=(reader&& other) noexcept;
+
+    // 设置数据源
+    void set_source(std::unique_ptr<std::istream> stream);
+    void set_source(const std::string& data);
+    void set_source(const std::vector<char>& data);
+    void set_source(const char* data, std::size_t size);
+    void set_source(const fs::path& archive_path);
+
+    // 检查是否有有效数据源
+    bool is_open() const;
+
+    // 释放当前数据源
+    void close();
+
+    void extract_all(const fs::path& output_dir = ".");
+    void list();
+
    private:
-    std::ifstream in_;
+    std::unique_ptr<std::ifstream> file_stream_;
+    std::unique_ptr<std::istream> memory_stream_;
+    std::istream* in_ = nullptr;
+
     bool read_header(header& hdr);
     std::string get_path(const header& hdr);
     void skip_data(std::uintmax_t size);
     void extract_file(const fs::path& path, std::uintmax_t size);
-
-   public:
-    explicit reader(const fs::path& archive_path);
-    reader(const reader&) = delete;
-    reader& operator=(const reader&) = delete;
-    void extract_all(const fs::path& output_dir = ".");
-    void list();
+    void cleanup();
 };
 
 // 便捷函数声明
@@ -101,7 +143,13 @@ void create_archive_from_directory(const fs::path& archive_path,
                                    const std::string& tar_name = "");
 void extract_archive(const fs::path& archive_path,
                      const fs::path& output_dir = ".");
+void extract_archive_from_memory(const std::string& data,
+                                 const fs::path& output_dir = ".");
+void extract_archive_from_memory(const std::vector<char>& data,
+                                 const fs::path& output_dir = ".");
 void list_archive(const fs::path& archive_path);
+void list_archive_from_memory(const std::string& data);
+void list_archive_from_memory(const std::vector<char>& data);
 
 }  // namespace tar
 

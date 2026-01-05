@@ -2,7 +2,9 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <random>
+#include <sstream>
 #include <vector>
 
 #include "fmt/color.h"
@@ -102,6 +104,233 @@ bool verify_file_content(const fs::path& path, const std::string& expected) {
     return content == expected;
 }
 
+// 测试内存流读取功能
+void test_memory_stream() {
+    print_section("测试内存流读取功能");
+
+    const fs::path test_dir = "test_memory_stream";
+    const fs::path extract_dir = test_dir / "extracted";
+
+    // 清理之前的测试目录
+    fs::remove_all(test_dir);
+    fs::create_directories(test_dir);
+
+    // 创建测试文件
+    const fs::path test_file1 = test_dir / "mem1.txt";
+    const fs::path test_file2 = test_dir / "mem2.txt";
+    create_test_file(test_file1, "内存流测试文件1");
+    create_test_file(test_file2, "内存流测试文件2");
+
+    try {
+        // 打包文件到内存
+        print_subsection("打包文件到内存");
+        tar::writer w;
+        w.add_file(test_file1, "memory_file1.txt");
+        w.add_file(test_file2, "memory_file2.txt");
+
+        // 获取内存数据
+        auto data = w.get_vector();
+        print_info(fmt::format("内存数据大小: {} bytes", data.size()));
+
+        // 测试从 vector<char> 读取
+        print_subsection("测试从 vector<char> 读取");
+        {
+            tar::reader r1(data);
+            fs::create_directories(extract_dir / "from_vector");
+            r1.extract_all(extract_dir / "from_vector");
+
+            if (fs::exists(extract_dir / "from_vector" / "memory_file1.txt") &&
+                fs::exists(extract_dir / "from_vector" / "memory_file2.txt")) {
+                print_success("从 vector<char> 解压成功");
+            } else {
+                print_error("从 vector<char> 解压失败");
+            }
+        }
+
+        // 测试从 string 读取
+        print_subsection("测试从 string 读取");
+        {
+            auto str_data = w.get_data();
+            tar::reader r2(str_data);
+            fs::create_directories(extract_dir / "from_string");
+            r2.extract_all(extract_dir / "from_string");
+
+            if (fs::exists(extract_dir / "from_string" / "memory_file1.txt") &&
+                fs::exists(extract_dir / "from_string" / "memory_file2.txt")) {
+                print_success("从 string 解压成功");
+            } else {
+                print_error("从 string 解压失败");
+            }
+        }
+
+        // 测试从 istream 读取
+        print_subsection("测试从 istream 读取");
+        {
+            auto stream = std::make_unique<std::istringstream>(w.get_data());
+            tar::reader r3(std::move(stream));
+            fs::create_directories(extract_dir / "from_stream");
+            r3.extract_all(extract_dir / "from_stream");
+
+            if (fs::exists(extract_dir / "from_stream" / "memory_file1.txt") &&
+                fs::exists(extract_dir / "from_stream" / "memory_file2.txt")) {
+                print_success("从 istream 解压成功");
+            } else {
+                print_error("从 istream 解压失败");
+            }
+        }
+
+        // 测试从原始指针读取
+        print_subsection("测试从原始指针读取");
+        {
+            auto data_vec = w.get_vector();
+            tar::reader r4(data_vec.data(), data_vec.size());
+            fs::create_directories(extract_dir / "from_raw_ptr");
+            r4.extract_all(extract_dir / "from_raw_ptr");
+
+            if (fs::exists(extract_dir / "from_raw_ptr" / "memory_file1.txt") &&
+                fs::exists(extract_dir / "from_raw_ptr" / "memory_file2.txt")) {
+                print_success("从原始指针解压成功");
+            } else {
+                print_error("从原始指针解压失败");
+            }
+        }
+
+        // 测试列表功能
+        print_subsection("测试内存流列表功能");
+        {
+            tar::reader r5(data);
+            std::cout << "\n内存压缩包内容列表:\n";
+            r5.list();
+        }
+
+    } catch (const std::exception& e) {
+        print_error(fmt::format("错误: {}", e.what()));
+    }
+
+    print_success("内存流测试完成");
+}
+
+// 测试 reader 类的 set_source 方法
+void test_reader_set_source() {
+    print_section("测试 reader 的 set_source 方法");
+
+    const fs::path test_dir = "test_reader_set_source";
+
+    // 清理之前的测试目录
+    fs::remove_all(test_dir);
+    fs::create_directories(test_dir);
+
+    // 创建测试文件
+    const fs::path test_file = test_dir / "test.txt";
+    create_test_file(test_file, "set_source 测试内容");
+
+    try {
+        // 创建内存中的 tar 数据
+        print_subsection("创建内存中的 tar 数据");
+        tar::writer w;
+        w.add_file(test_file, "test_in_tar.txt");
+        auto data = w.get_vector();
+
+        // 测试默认构造函数和 set_source
+        print_subsection("测试默认构造函数和 set_source");
+        tar::reader r;
+        assert(!r.is_open());
+        print_success("默认构造函数创建未打开的 reader");
+
+        r.set_source(data);
+        assert(r.is_open());
+        print_success("set_source 成功打开 reader");
+
+        // 测试移动语义
+        print_subsection("测试移动语义");
+        tar::reader r2 = std::move(r);
+        assert(r2.is_open());
+        assert(!r.is_open());
+        print_success("移动构造函数工作正常");
+
+        tar::reader r3;
+        r3 = std::move(r2);
+        assert(r3.is_open());
+        assert(!r2.is_open());
+        print_success("移动赋值运算符工作正常");
+
+        // 测试 close 方法
+        print_subsection("测试 close 方法");
+        r3.close();
+        assert(!r3.is_open());
+        print_success("close 方法工作正常");
+
+        // 测试从不同源切换
+        print_subsection("测试从不同源切换");
+        r3.set_source(data);
+        r3.set_source(w.get_data());  // 切换到另一个源
+        assert(r3.is_open());
+        print_success("成功切换数据源");
+
+    } catch (const std::exception& e) {
+        print_error(fmt::format("错误: {}", e.what()));
+    }
+
+    print_success("reader set_source 测试完成");
+}
+
+// 测试便捷函数的内存版本
+void test_memory_convenience_functions() {
+    print_section("测试内存便捷函数");
+
+    const fs::path test_dir = "test_memory_convenience";
+
+    // 清理之前的测试目录
+    fs::remove_all(test_dir);
+    fs::create_directories(test_dir);
+
+    // 创建测试文件
+    const fs::path test_file = test_dir / "conv_test.txt";
+    create_test_file(test_file, "便捷函数测试内容");
+
+    try {
+        // 创建内存中的 tar 数据
+        print_subsection("创建内存中的 tar 数据");
+        tar::writer w;
+        w.add_file(test_file, "conv_file.txt");
+        auto data = w.get_vector();
+        auto str_data = w.get_data();
+
+        // 测试从内存提取
+        print_subsection("测试从内存提取");
+        fs::create_directories(test_dir / "extracted1");
+        tar::extract_archive_from_memory(data, test_dir / "extracted1");
+
+        if (fs::exists(test_dir / "extracted1" / "conv_file.txt")) {
+            print_success("从 vector<char> 提取成功");
+        } else {
+            print_error("从 vector<char> 提取失败");
+        }
+
+        fs::create_directories(test_dir / "extracted2");
+        tar::extract_archive_from_memory(str_data, test_dir / "extracted2");
+
+        if (fs::exists(test_dir / "extracted2" / "conv_file.txt")) {
+            print_success("从 string 提取成功");
+        } else {
+            print_error("从 string 提取失败");
+        }
+
+        // 测试从内存列表
+        print_subsection("测试从内存列表");
+        std::cout << "\nvector<char> 压缩包内容:\n";
+        tar::list_archive_from_memory(data);
+
+        std::cout << "\nstring 压缩包内容:\n";
+        tar::list_archive_from_memory(str_data);
+
+    } catch (const std::exception& e) {
+        print_error(fmt::format("错误: {}", e.what()));
+    }
+
+    print_success("内存便捷函数测试完成");
+}
+
 // 测试单个文件打包（内存流版本）
 void test_single_file() {
     print_section("测试单个文件打包（内存流）");
@@ -142,19 +371,36 @@ void test_single_file() {
         print_subsection("列出压缩包内容");
         tar::list_archive(archive_path);
 
-        // 解压文件
-        print_subsection("解压文件");
-        fs::create_directories(extract_dir);
-        tar::extract_archive(archive_path, extract_dir);
+        // 从内存读取并解压
+        print_subsection("从内存读取并解压");
+        fs::create_directories(extract_dir / "from_memory");
+        auto data = w.get_data();
+        tar::extract_archive_from_memory(data, extract_dir / "from_memory");
+
+        // 从文件读取并解压
+        print_subsection("从文件读取并解压");
+        fs::create_directories(extract_dir / "from_file");
+        tar::extract_archive(archive_path, extract_dir / "from_file");
 
         // 验证文件
         print_subsection("验证文件");
-        const fs::path extracted_file = extract_dir / "hello.txt";
-        if (fs::exists(extracted_file) &&
-            verify_file_content(extracted_file, "Hello, Tar Archive!")) {
-            print_success("文件验证通过");
+        const fs::path extracted_memory_file =
+            extract_dir / "from_memory" / "hello.txt";
+        const fs::path extracted_file_file =
+            extract_dir / "from_file" / "hello.txt";
+
+        bool memory_ok =
+            fs::exists(extracted_memory_file) &&
+            verify_file_content(extracted_memory_file, "Hello, Tar Archive!");
+        bool file_ok =
+            fs::exists(extracted_file_file) &&
+            verify_file_content(extracted_file_file, "Hello, Tar Archive!");
+
+        if (memory_ok && file_ok) {
+            print_success("文件验证通过（内存和文件）");
         } else {
-            print_error("文件验证失败");
+            if (!memory_ok) print_error("内存解压验证失败");
+            if (!file_ok) print_error("文件解压验证失败");
         }
 
         // 测试获取不同格式的数据
@@ -223,25 +469,40 @@ void test_multiple_files() {
         print_subsection("列出压缩包内容");
         tar::list_archive(archive_path);
 
-        // 解压文件
-        print_subsection("解压文件");
-        fs::create_directories(extract_dir);
-        tar::extract_archive(archive_path, extract_dir);
+        // 从内存解压
+        print_subsection("从内存解压");
+        fs::create_directories(extract_dir / "from_memory");
+        auto data = w.get_data();
+        tar::extract_archive_from_memory(data, extract_dir / "from_memory");
+
+        // 从文件解压
+        print_subsection("从文件解压");
+        fs::create_directories(extract_dir / "from_file");
+        tar::extract_archive(archive_path, extract_dir / "from_file");
 
         // 验证文件
         print_subsection("验证文件");
-        bool all_ok = true;
+        bool all_memory_ok = true;
+        bool all_file_ok = true;
+
         for (size_t i = 0; i < test_files.size(); ++i) {
-            const fs::path extracted_file =
-                extract_dir / test_files[i].filename();
-            if (!fs::exists(extracted_file)) {
-                print_error(fmt::format("文件{}不存在", i + 1));
-                all_ok = false;
+            const fs::path extracted_memory_file =
+                extract_dir / "from_memory" / test_files[i].filename();
+            const fs::path extracted_file_file =
+                extract_dir / "from_file" / test_files[i].filename();
+
+            if (!fs::exists(extracted_memory_file)) {
+                print_error(fmt::format("内存解压文件{}不存在", i + 1));
+                all_memory_ok = false;
+            }
+            if (!fs::exists(extracted_file_file)) {
+                print_error(fmt::format("文件解压文件{}不存在", i + 1));
+                all_file_ok = false;
             }
         }
 
-        if (all_ok) {
-            print_success("所有文件验证通过");
+        if (all_memory_ok && all_file_ok) {
+            print_success("所有文件验证通过（内存和文件）");
         }
 
     } catch (const std::exception& e) {
@@ -301,21 +562,43 @@ void test_directory() {
         print_subsection("列出压缩包内容");
         tar::list_archive(archive_path);
 
-        // 解压目录
-        print_subsection("解压目录");
-        fs::create_directories(extract_dir);
-        tar::extract_archive(archive_path, extract_dir);
+        // 从内存解压
+        print_subsection("从内存解压");
+        fs::create_directories(extract_dir / "from_memory");
+        auto data = w.get_vector();
+        tar::extract_archive_from_memory(data, extract_dir / "from_memory");
+
+        // 从文件解压
+        print_subsection("从文件解压");
+        fs::create_directories(extract_dir / "from_file");
+        tar::extract_archive(archive_path, extract_dir / "from_file");
 
         // 验证目录结构
         print_subsection("验证目录结构");
-        assert(fs::exists(extract_dir / "mydir"));
-        assert(fs::exists(extract_dir / "mydir" / "root.txt"));
-        assert(fs::exists(extract_dir / "mydir" / "subdir1" / "file1.txt"));
-        assert(fs::exists(extract_dir / "mydir" / "subdir2" / "deep" /
-                          "deepfile.txt"));
-        assert(fs::exists(extract_dir / "mydir" / "empty_dir"));
+        bool memory_ok =
+            fs::exists(extract_dir / "from_memory" / "mydir") &&
+            fs::exists(extract_dir / "from_memory" / "mydir" / "root.txt") &&
+            fs::exists(extract_dir / "from_memory" / "mydir" / "subdir1" /
+                       "file1.txt") &&
+            fs::exists(extract_dir / "from_memory" / "mydir" / "subdir2" /
+                       "deep" / "deepfile.txt") &&
+            fs::exists(extract_dir / "from_memory" / "mydir" / "empty_dir");
 
-        print_success("目录结构验证通过");
+        bool file_ok =
+            fs::exists(extract_dir / "from_file" / "mydir") &&
+            fs::exists(extract_dir / "from_file" / "mydir" / "root.txt") &&
+            fs::exists(extract_dir / "from_file" / "mydir" / "subdir1" /
+                       "file1.txt") &&
+            fs::exists(extract_dir / "from_file" / "mydir" / "subdir2" /
+                       "deep" / "deepfile.txt") &&
+            fs::exists(extract_dir / "from_file" / "mydir" / "empty_dir");
+
+        if (memory_ok && file_ok) {
+            print_success("目录结构验证通过（内存和文件）");
+        } else {
+            if (!memory_ok) print_error("内存解压目录结构验证失败");
+            if (!file_ok) print_error("文件解压目录结构验证失败");
+        }
 
     } catch (const std::exception& e) {
         print_error(fmt::format("错误: {}", e.what()));
@@ -374,23 +657,42 @@ void test_large_file() {
         data_size = w.size();
         print_info(fmt::format("finish 后的数据大小: {} bytes", data_size));
 
-        // 解压大文件
-        print_subsection("解压大文件");
-        fs::create_directories(extract_dir);
-        tar::extract_archive(archive_path, extract_dir);
+        // 从内存解压
+        print_subsection("从内存解压大文件");
+        fs::create_directories(extract_dir / "from_memory");
+        auto data = w.get_data();
+        tar::extract_archive_from_memory(data, extract_dir / "from_memory");
+
+        // 从文件解压
+        print_subsection("从文件解压大文件");
+        fs::create_directories(extract_dir / "from_file");
+        tar::extract_archive(archive_path, extract_dir / "from_file");
 
         // 验证文件大小
         print_subsection("验证文件大小");
-        const fs::path extracted_file = extract_dir / "large.bin";
-        auto original_size = fs::file_size(large_file);
-        auto extracted_size = fs::file_size(extracted_file);
+        const fs::path extracted_memory_file =
+            extract_dir / "from_memory" / "large.bin";
+        const fs::path extracted_file_file =
+            extract_dir / "from_file" / "large.bin";
 
-        if (original_size == extracted_size) {
-            print_success(
-                fmt::format("文件大小验证通过: {} bytes", original_size));
+        auto original_size = fs::file_size(large_file);
+        auto memory_size = fs::file_size(extracted_memory_file);
+        auto file_size = fs::file_size(extracted_file_file);
+
+        bool memory_ok = original_size == memory_size;
+        bool file_ok = original_size == file_size;
+
+        if (memory_ok && file_ok) {
+            print_success(fmt::format(
+                "文件大小验证通过: 原始={}, 内存解压={}, 文件解压={}",
+                original_size, memory_size, file_size));
         } else {
-            print_error(fmt::format("文件大小不匹配: 原始={}, 解压={}",
-                                    original_size, extracted_size));
+            if (!memory_ok)
+                print_error(fmt::format("内存解压大小不匹配: 原始={}, 解压={}",
+                                        original_size, memory_size));
+            if (!file_ok)
+                print_error(fmt::format("文件解压大小不匹配: 原始={}, 解压={}",
+                                        original_size, file_size));
         }
 
     } catch (const std::exception& e) {
@@ -441,11 +743,32 @@ void test_error_handling() {
             print_success(fmt::format("预期异常: {}", e.what()));
         }
 
-        // 测试打开不存在的压缩包
+        // 修正：明确指定路径构造函数
         print_subsection("测试读取不存在的压缩包");
         try {
-            tar::reader r("this_archive_does_not_exist.tar");
+            tar::reader r(fs::path("this_archive_does_not_exist.tar"));
             r.list();
+            print_error("应该抛出异常但没有！");
+        } catch (const std::exception& e) {
+            print_success(fmt::format("预期异常: {}", e.what()));
+        }
+
+        // 测试从无效的内存数据读取
+        print_subsection("测试从无效的内存数据读取");
+        try {
+            std::vector<char> invalid_data = {0, 1, 2, 3, 4, 5};
+            tar::reader r(invalid_data);
+            r.extract_all("test");
+            print_error("应该抛出异常但没有！");
+        } catch (const std::exception& e) {
+            print_success(fmt::format("预期异常: {}", e.what()));
+        }
+
+        // 测试空的 reader
+        print_subsection("测试空的 reader");
+        try {
+            tar::reader r;
+            r.extract_all("test");
             print_error("应该抛出异常但没有！");
         } catch (const std::exception& e) {
             print_success(fmt::format("预期异常: {}", e.what()));
@@ -509,8 +832,18 @@ void test_writer_class() {
         auto finished_size = w.size();
         print_info(fmt::format("finish 后数据大小: {} bytes", finished_size));
 
-        // 列出内容
-        tar::list_archive(archive_path);
+        // 从内存和文件读取并比较
+        print_subsection("比较内存和文件读取结果");
+        auto memory_data = w.get_data();
+        tar::reader r_memory(memory_data);
+        tar::reader r_file(archive_path);
+
+        // 测试内存和文件读取的一致性
+        std::cout << "\n内存数据内容:\n";
+        r_memory.list();
+
+        std::cout << "\n文件数据内容:\n";
+        r_file.list();
 
         print_success("writer 类测试完成");
 
@@ -620,6 +953,15 @@ void run_all_tests() {
         // 测试8: 便捷函数
         test_convenience_functions();
 
+        // 测试9: 内存流读取功能
+        test_memory_stream();
+
+        // 测试10: reader 的 set_source 方法
+        test_reader_set_source();
+
+        // 测试11: 内存便捷函数
+        test_memory_convenience_functions();
+
         fmt::print("\n");
         fmt::print(fg(fmt::color::light_green) | fmt::emphasis::bold,
                    "{:*^50}\n", " 所有测试完成 ");
@@ -643,8 +985,11 @@ void cleanup() {
     print_section("清理测试文件");
 
     std::vector<std::string> test_dirs = {
-        "test_single_file", "test_multiple_files", "test_directory",
-        "test_large_file",  "test_writer_class",   "test_convenience"};
+        "test_single_file",       "test_multiple_files",
+        "test_directory",         "test_large_file",
+        "test_writer_class",      "test_convenience",
+        "test_memory_stream",     "test_reader_set_source",
+        "test_memory_convenience"};
 
     int removed_count = 0;
     for (const auto& dir : test_dirs) {
@@ -681,10 +1026,10 @@ int test_main() {
     fmt::print("\n");
 
     // 运行所有测试
-    tar_tests::run_all_tests();
+    run_all_tests();
 
     // 清理测试文件
-    tar_tests::cleanup();
+    cleanup();
 
     fmt::print("\n");
     fmt::print(fg(fmt::color::light_gray), "测试程序结束\n");
