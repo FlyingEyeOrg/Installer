@@ -12,6 +12,9 @@
 
 namespace tar_tests {
 
+#undef max
+#undef min
+
 namespace fs = std::filesystem;
 
 // 格式化工具函数
@@ -99,9 +102,9 @@ bool verify_file_content(const fs::path& path, const std::string& expected) {
     return content == expected;
 }
 
-// 测试单个文件打包
+// 测试单个文件打包（内存流版本）
 void test_single_file() {
-    print_section("测试单个文件打包");
+    print_section("测试单个文件打包（内存流）");
 
     const fs::path test_dir = "test_single_file";
     const fs::path archive_path = test_dir / "test.tar";
@@ -116,12 +119,18 @@ void test_single_file() {
     create_test_file(test_file, "Hello, Tar Archive!");
 
     try {
-        // 打包文件
-        print_subsection("打包单个文件");
-        {
-            tar::writer w(archive_path);
-            w.add_file(test_file);
-        }
+        // 打包文件到内存
+        print_subsection("打包单个文件到内存");
+        tar::writer w;
+        w.add_file(test_file);
+
+        // 获取数据大小
+        auto data_size = w.size();
+        print_info(fmt::format("内存中的数据大小: {} bytes", data_size));
+
+        // 保存到文件
+        print_subsection("将内存数据写入文件");
+        w.write_to_file(archive_path);
 
         // 列出压缩包内容
         print_subsection("列出压缩包内容");
@@ -142,6 +151,19 @@ void test_single_file() {
             print_error("文件验证失败");
         }
 
+        // 测试获取不同格式的数据
+        print_subsection("测试数据获取接口");
+        std::string str_data = w.get_data();
+        std::vector<char> vec_data = w.get_vector();
+
+        if (str_data.size() == data_size && vec_data.size() == data_size) {
+            print_success("数据获取接口测试通过");
+        } else {
+            print_error(
+                fmt::format("数据大小不匹配: str={}, vec={}, expected={}",
+                            str_data.size(), vec_data.size(), data_size));
+        }
+
     } catch (const std::exception& e) {
         print_error(fmt::format("错误: {}", e.what()));
     }
@@ -149,9 +171,9 @@ void test_single_file() {
     print_success("单个文件测试完成");
 }
 
-// 测试多个文件打包
+// 测试多个文件打包（内存流版本）
 void test_multiple_files() {
-    print_section("测试多个文件打包");
+    print_section("测试多个文件打包（内存流）");
 
     const fs::path test_dir = "test_multiple_files";
     const fs::path archive_path = test_dir / "test.tar";
@@ -171,9 +193,20 @@ void test_multiple_files() {
                      "这是文件3的内容，稍微长一点的内容用于测试");
 
     try {
-        // 打包多个文件
-        print_subsection("打包多个文件");
-        tar::create_archive(archive_path, test_files);
+        // 打包多个文件到内存
+        print_subsection("打包多个文件到内存");
+        tar::writer w;
+        for (const auto& file : test_files) {
+            w.add_file(file);
+        }
+
+        // 获取数据并验证大小
+        auto data_size = w.size();
+        print_info(fmt::format("内存中的数据大小: {} bytes", data_size));
+
+        // 保存到文件
+        print_subsection("将内存数据写入文件");
+        w.write_to_file(archive_path);
 
         // 列出压缩包内容
         print_subsection("列出压缩包内容");
@@ -207,9 +240,9 @@ void test_multiple_files() {
     print_success("多个文件测试完成");
 }
 
-// 测试目录打包
+// 测试目录打包（内存流版本）
 void test_directory() {
-    print_section("测试目录打包");
+    print_section("测试目录打包（内存流）");
 
     const fs::path test_dir = "test_directory";
     const fs::path archive_path = test_dir / "test.tar";
@@ -235,9 +268,19 @@ void test_directory() {
     fs::create_directories(source_dir / "empty_dir");
 
     try {
-        // 打包整个目录
-        print_subsection("打包整个目录");
-        tar::create_archive_from_directory(archive_path, source_dir, "mydir");
+        // 打包整个目录到内存
+        print_subsection("打包整个目录到内存");
+        tar::writer w;
+        std::string name = "mydir";
+        w.add_directory(source_dir, name);
+
+        // 获取数据大小
+        auto data_size = w.size();
+        print_info(fmt::format("内存中的数据大小: {} bytes", data_size));
+
+        // 保存到文件
+        print_subsection("将内存数据写入文件");
+        w.write_to_file(archive_path);
 
         // 列出压缩包内容
         print_subsection("列出压缩包内容");
@@ -266,9 +309,9 @@ void test_directory() {
     print_success("目录测试完成");
 }
 
-// 测试大文件
+// 测试大文件（内存流版本）
 void test_large_file() {
-    print_section("测试大文件打包");
+    print_section("测试大文件打包（内存流）");
 
     const fs::path test_dir = "test_large_file";
     const fs::path archive_path = test_dir / "large.tar";
@@ -299,12 +342,18 @@ void test_large_file() {
     }
 
     try {
-        // 打包大文件
-        print_subsection("打包大文件");
-        {
-            tar::writer w(archive_path);
-            w.add_file(large_file);
-        }
+        // 打包大文件到内存
+        print_subsection("打包大文件到内存");
+        tar::writer w;
+        w.add_file(large_file);
+
+        // 获取数据大小
+        auto data_size = w.size();
+        print_info(fmt::format("内存中的数据大小: {} bytes", data_size));
+
+        // 保存到文件
+        print_subsection("将内存数据写入文件");
+        w.write_to_file(archive_path);
 
         // 解压大文件
         print_subsection("解压大文件");
@@ -332,15 +381,15 @@ void test_large_file() {
     print_success("大文件测试完成");
 }
 
-// 测试错误处理
+// 测试错误处理（内存流版本）
 void test_error_handling() {
-    print_section("测试错误处理");
+    print_section("测试错误处理（内存流）");
 
     try {
         // 测试不存在的文件
         print_subsection("测试打包不存在的文件");
         try {
-            tar::writer w("nonexistent.tar");
+            tar::writer w;
             w.add_file("this_file_does_not_exist.txt");
             print_error("应该抛出异常但没有！");
         } catch (const std::exception& e) {
@@ -350,8 +399,19 @@ void test_error_handling() {
         // 测试不存在的目录
         print_subsection("测试打包不存在的目录");
         try {
-            tar::writer w("nonexistent_dir.tar");
+            tar::writer w;
             w.add_directory("this_dir_does_not_exist");
+            print_error("应该抛出异常但没有！");
+        } catch (const std::exception& e) {
+            print_success(fmt::format("预期异常: {}", e.what()));
+        }
+
+        // 测试写入不存在的目录
+        print_subsection("测试写入不存在的目录");
+        try {
+            tar::writer w;
+            w.add_file("existing_file.txt");  // 假设这个文件存在
+            w.write_to_file("nonexistent/path/test.tar");
             print_error("应该抛出异常但没有！");
         } catch (const std::exception& e) {
             print_success(fmt::format("预期异常: {}", e.what()));
@@ -374,9 +434,9 @@ void test_error_handling() {
     print_success("错误处理测试完成");
 }
 
-// 测试 writer 类的所有方法
+// 测试 writer 类的所有方法（内存流版本）
 void test_writer_class() {
-    print_section("测试 writer 类");
+    print_section("测试 writer 类（内存流）");
 
     const fs::path test_dir = "test_writer_class";
     const fs::path archive_path = test_dir / "writer_test.tar";
@@ -394,15 +454,28 @@ void test_writer_class() {
     try {
         // 测试手动添加文件
         print_subsection("测试手动添加文件");
-        {
-            tar::writer w(archive_path);
-            w.add_file(test_dir / "test1.txt", "custom_name.txt");
-            w.add_directory(test_dir / "test_dir", "custom_dir");
-            w.finish();  // 显式调用 finish
-        }
+        tar::writer w;
+        w.add_file(test_dir / "test1.txt", "custom_name.txt");
+        w.add_directory(test_dir / "test_dir", "custom_dir");
+
+        // 测试数据获取
+        print_subsection("测试数据获取");
+        auto data_size = w.size();
+        print_info(fmt::format("数据大小: {} bytes", data_size));
+        assert(!w.empty());
+
+        // 测试 clear 方法
+        print_subsection("测试 clear 方法");
+        w.clear();
+        assert(w.empty());
+        print_info(fmt::format("clear 后数据大小: {} bytes", w.size()));
+
+        // 重新添加数据
+        w.add_file(test_dir / "test2.txt");
 
         // 验证压缩包
         print_subsection("验证压缩包内容");
+        w.write_to_file(archive_path);
         tar::list_archive(archive_path);
 
         print_success("writer 类测试完成");
@@ -414,68 +487,78 @@ void test_writer_class() {
     print_success("writer 类测试完成");
 }
 
-// 测试 reader 类的所有方法
-void test_reader_class() {
-    print_section("测试 reader 类");
+// 测试便捷函数
+void test_convenience_functions() {
+    print_section("测试便捷函数");
 
-    const fs::path test_dir = "test_reader_class";
-    const fs::path archive_path = test_dir / "reader_test.tar";
-    const fs::path extract_dir = test_dir / "extracted";
-    const fs::path list_dir = test_dir / "list_test";
+    const fs::path test_dir = "test_convenience";
+    const fs::path archive1 = test_dir / "archive1.tar";
+    const fs::path archive2 = test_dir / "archive2.tar";
+    const fs::path source_dir = test_dir / "source";
 
     // 清理之前的测试目录
     fs::remove_all(test_dir);
     fs::create_directories(test_dir);
-    fs::create_directories(list_dir);
+    fs::create_directories(source_dir);
 
     // 创建测试文件
-    create_test_file(test_dir / "file_a.txt", "文件A");
-    create_test_file(test_dir / "file_b.txt", "文件B");
+    create_test_file(source_dir / "file1.txt", "文件1");
+    create_test_file(source_dir / "file2.txt", "文件2");
 
     try {
-        // 先创建一个压缩包
-        print_subsection("创建测试压缩包");
-        {
-            tar::writer w(archive_path);
-            w.add_file(test_dir / "file_a.txt");
-            w.add_file(test_dir / "file_b.txt");
+        // 测试 create_archive
+        print_subsection("测试 create_archive");
+        std::vector<fs::path> files = {source_dir / "file1.txt",
+                                       source_dir / "file2.txt"};
+        tar::create_archive(archive1, files);
+
+        if (fs::exists(archive1)) {
+            print_success(
+                fmt::format("create_archive 成功: {}", archive1.string()));
+            tar::list_archive(archive1);
+        } else {
+            print_error("create_archive 失败");
         }
 
-        // 测试 reader 的各种功能
-        print_subsection("测试 list() 方法");
-        {
-            tar::reader r(archive_path);
-            r.list();
+        // 测试 create_archive_from_directory
+        print_subsection("测试 create_archive_from_directory");
+        tar::create_archive_from_directory(archive2, source_dir, "mydir");
+
+        if (fs::exists(archive2)) {
+            print_success(fmt::format("create_archive_from_directory 成功: {}",
+                                      archive2.string()));
+            tar::list_archive(archive2);
+        } else {
+            print_error("create_archive_from_directory 失败");
         }
 
-        // 测试 extract_all() 方法
-        print_subsection("测试 extract_all() 方法");
-        {
-            tar::reader r(archive_path);
-            r.extract_all(extract_dir);
+        // 测试 extract_archive
+        print_subsection("测试 extract_archive");
+        const fs::path extract_dir = test_dir / "extracted";
+        tar::extract_archive(archive1, extract_dir);
 
-            // 验证解压的文件
-            if (fs::exists(extract_dir / "file_a.txt") &&
-                fs::exists(extract_dir / "file_b.txt")) {
-                print_success("文件解压成功");
-            } else {
-                print_error("文件解压失败");
-            }
+        if (fs::exists(extract_dir / "file1.txt") &&
+            fs::exists(extract_dir / "file2.txt")) {
+            print_success("extract_archive 成功");
+        } else {
+            print_error("extract_archive 失败");
         }
 
-        print_success("reader 类测试完成");
+        // 测试 list_archive
+        print_subsection("测试 list_archive");
+        tar::list_archive(archive2);
 
     } catch (const std::exception& e) {
         print_error(fmt::format("错误: {}", e.what()));
     }
 
-    print_success("reader 类测试完成");
+    print_success("便捷函数测试完成");
 }
 
 // 主测试函数，调用所有测试
 void run_all_tests() {
     fmt::print(fg(fmt::color::light_green) | fmt::emphasis::bold, "\n{:*^50}\n",
-               " 开始 Tar 库测试 ");
+               " 开始 Tar 库测试（内存流版本）");
     fmt::print("\n");
 
     try {
@@ -500,8 +583,8 @@ void run_all_tests() {
         // 测试7: writer 类
         test_writer_class();
 
-        // 测试8: reader 类
-        test_reader_class();
+        // 测试8: 便捷函数
+        test_convenience_functions();
 
         fmt::print("\n");
         fmt::print(fg(fmt::color::light_green) | fmt::emphasis::bold,
@@ -527,7 +610,7 @@ void cleanup() {
 
     std::vector<std::string> test_dirs = {
         "test_single_file", "test_multiple_files", "test_directory",
-        "test_large_file",  "test_writer_class",   "test_reader_class"};
+        "test_large_file",  "test_writer_class",   "test_convenience"};
 
     int removed_count = 0;
     for (const auto& dir : test_dirs) {
@@ -552,7 +635,7 @@ void cleanup() {
 // 主函数
 int test_main() {
     fmt::print(fg(fmt::color::light_blue) | fmt::emphasis::bold, "{:*^50}\n",
-               " Tar 库测试程序 ");
+               " Tar 库测试程序（内存流版本）");
     fmt::print("\n");
 
     // 运行所有测试
@@ -566,4 +649,5 @@ int test_main() {
 
     return 0;
 }
+
 }  // namespace tar_tests

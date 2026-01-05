@@ -17,7 +17,7 @@
 namespace tar {
 namespace chrono = std::chrono;
 
-// 工具函数定义
+// 工具函数定义保持不变
 std::uintmax_t parse_octal(const char* data, std::size_t size) {
     std::uintmax_t result = 0;
     bool started = false;
@@ -84,16 +84,13 @@ bool is_zero_block(const header& hdr) {
 }
 
 // writer 类方法定义
-writer::writer(const fs::path& archive_path)
-    : out_(archive_path, std::ios::binary) {
-    if (!out_) {
-        throw std::runtime_error("Cannot create archive: " +
-                                 archive_path.string());
-    }
+writer::writer() {
+    // 初始化字符串流
+    out_.exceptions(std::ios::badbit | std::ios::failbit);
 }
 
 writer::~writer() {
-    if (out_.is_open()) {
+    if (!out_.str().empty()) {  // 如果有数据，自动完成打包
         try {
             finish();
         } catch (...) {
@@ -367,7 +364,42 @@ void writer::finish() {
     out_.flush();
 }
 
-// reader 类方法定义
+std::string writer::get_data() const { return out_.str(); }
+
+std::vector<char> writer::get_vector() const {
+    std::string data = out_.str();
+    return std::vector<char>(data.begin(), data.end());
+}
+
+void writer::write_to_file(const fs::path& file_path) {
+    // 确保完成打包
+    finish();
+
+    std::ofstream file(file_path, std::ios::binary);
+    if (!file) {
+        throw std::runtime_error("Cannot open file for writing: " +
+                                 file_path.string());
+    }
+
+    std::string data = out_.str();
+    file.write(data.data(), data.size());
+
+    if (!file) {
+        throw std::runtime_error("Failed to write to file: " +
+                                 file_path.string());
+    }
+}
+
+void writer::clear() {
+    out_.str("");  // 清空字符串流
+    out_.clear();  // 清除错误状态
+}
+
+std::size_t writer::size() const { return out_.str().size(); }
+
+bool writer::empty() const { return out_.str().empty(); }
+
+// reader 类方法定义保持不变
 reader::reader(const fs::path& archive_path)
     : in_(archive_path, std::ios::binary) {
     if (!in_) {
@@ -562,21 +594,23 @@ void reader::list() {
 // 便捷函数定义
 void create_archive(const fs::path& archive_path,
                     const std::vector<fs::path>& files) {
-    writer w(archive_path);
+    writer w;
     for (const auto& file : files) {
         w.add_file(file);
     }
+    w.write_to_file(archive_path);
 }
 
 void create_archive_from_directory(const fs::path& archive_path,
                                    const fs::path& directory,
                                    const std::string& tar_name) {
-    writer w(archive_path);
+    writer w;
 
     // 如果指定了tar中的名称，使用它，否则使用目录名
     std::string name =
         tar_name.empty() ? directory.filename().string() : tar_name;
     w.add_directory(directory, name);
+    w.write_to_file(archive_path);
 }
 
 void extract_archive(const fs::path& archive_path, const fs::path& output_dir) {

@@ -3,6 +3,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -41,23 +42,38 @@ bool is_zero_block(const header& hdr);
 // tar 打包器类声明
 class writer {
    private:
-    std::ofstream out_;
+    std::ostringstream out_;  // 改为字符串流
     void write_file_data(const fs::path& path, std::uintmax_t size);
     void write_directory_entry(const std::string& dir_name);
     void write_file_entry(const std::string& file_path,
                           const fs::path& real_path);
     void add_directory_recursive(const fs::path& dir_path,
                                  const std::string& base_name);
+    void finish();  // 改为私有
 
    public:
-    explicit writer(const fs::path& archive_path);
+    writer();  // 不再需要传入文件路径
     writer(const writer&) = delete;
     writer& operator=(const writer&) = delete;
     ~writer();
+
     void add_file(const fs::path& file_path, const std::string& tar_name = "");
     void add_directory(const fs::path& dir_path,
                        const std::string& tar_name = "");
-    void finish();
+
+    // 新的数据访问接口
+    std::string get_data() const;                   // 获取所有数据
+    std::vector<char> get_vector() const;           // 获取二进制数据
+    void write_to_file(const fs::path& file_path);  // 写入文件
+    void clear();                                   // 清空数据以便重复使用
+
+    // 流接口
+    std::ostringstream& stream() { return out_; }
+    const std::ostringstream& stream() const { return out_; }
+
+    // 工具函数
+    std::size_t size() const;  // 获取数据大小
+    bool empty() const;        // 判断是否为空
 };
 
 // tar 解包器类声明
