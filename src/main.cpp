@@ -1,62 +1,58 @@
-// main.cpp (使用示例)
 #include <string>
 
-#include "win32/application.hpp"
-#include "win32/main_window.hpp"
+#include "win32/window.hpp"
+#include "win32/window_resource.hpp"
 
-int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR pCmdLine,
-                    int nCmdShow) {
-    using namespace win32;
+class my_window : public window {
+   public:
+    // 使用默认构造函数创建默认窗口
+    my_window() : window(L"My Window", 800, 600) {}
 
-    // 设置应用程序实例
-    application& app = application::instance();
-    app.set_instance_handle(hInstance);
+    // 或者指定参数
+    my_window(const std::wstring& title, int width, int height)
+        : window(title, width, height) {}
 
-    try {
-        // 创建主窗口
-        main_window main_win(L"Win32 窗口示例", 1024, 768);
+    // 重写消息处理
+    virtual LRESULT on_paint() override {
+        PAINTSTRUCT ps;
+        HDC hdc = BeginPaint(get_handle(), &ps);
 
-        // 自定义窗口样式
-        window_base::style win_style;
-        win_style.background = CreateSolidBrush(RGB(240, 240, 240));
+        RECT rect = get_client_rect();
+        DrawTextW(hdc, L"Hello, World!", -1, &rect,
+                  DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 
-        // 创建窗口
-        if (!main_win.create(hInstance, nullptr, win_style)) {
-            MessageBoxW(nullptr, L"创建窗口失败", L"错误",
-                        MB_OK | MB_ICONERROR);
-            return 1;
-        }
-
-        // 显示窗口
-        main_win.show(nCmdShow);
-
-        // 添加空闲处理
-        app.add_idle_handler([&main_win]() {
-            // 可以在这里处理一些后台任务
-            static DWORD last_time = GetTickCount();
-            DWORD current_time = GetTickCount();
-
-            if (current_time - last_time > 1000) {  // 每秒执行一次
-                // 更新窗口标题显示时间
-                SYSTEMTIME sys_time;
-                GetLocalTime(&sys_time);
-
-                wchar_t time_str[64];
-                wsprintfW(time_str, L"Win32 窗口 - %02d:%02d:%02d",
-                          sys_time.wHour, sys_time.wMinute, sys_time.wSecond);
-
-                main_win.set_title(time_str);
-                last_time = current_time;
-                return true;  // 表示有工作要做
-            }
-            return false;  // 没有工作要做
-        });
-
-        // 运行应用程序
-        return app.run();
-
-    } catch (const std::exception& e) {
-        MessageBoxA(nullptr, e.what(), "exception", MB_OK | MB_ICONERROR);
-        return 1;
+        EndPaint(get_handle(), &ps);
+        return 0;
     }
+
+    virtual LRESULT on_close() override {
+        // 自定义关闭行为
+        if (MessageBoxW(get_handle(), L"确定要关闭吗？", L"确认",
+                        MB_YESNO | MB_ICONQUESTION) == IDYES) {
+            return window::on_close();  // 调用基类关闭
+        }
+        return 0;  // 取消关闭
+    }
+};
+
+// 示例2：使用自定义窗口类
+class custom_class_window : public window {
+   public:
+    custom_class_window()
+        : window(L"MyCustomClass", L"Custom Window", 400, 300) {}
+};
+
+int main() {
+    // 初始化资源管理器
+    window_resource& resource = window_resource::get_instance();
+
+    // 创建窗口（在构造函数中自动创建）
+    my_window main_window(L"主窗口", 800, 600);
+    main_window.show();
+
+    resource.run_message_loop();
+
+    resource.cleanup();
+
+    return 0;
 }

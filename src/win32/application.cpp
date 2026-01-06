@@ -1,82 +1,222 @@
-// application.cpp
-#include "win32/application.hpp"
+// // application.cpp
+// #include "application.hpp"
 
-#include "win32/window_base.hpp"
+// #include <algorithm>
 
-namespace win32 {
+// #include "window.hpp"
 
-int application::run() {
-    if (is_running_) {
-        return exit_code_;
-    }
 
-    if (!instance_) {
-        instance_ = GetModuleHandleW(nullptr);
-    }
+// // 静态成员初始化
+// std::unordered_map<HWND, window*> application::s_window_map;
+// std::mutex application::s_window_map_mutex;
+// bool application::s_window_class_registered = false;
 
-    is_running_ = true;
-    exit_code_ = 0;
+// // 窗口类名
+// static const wchar_t* WINDOW_CLASS_NAME = L"window_class";
 
-    MSG msg = {};
+// application& application::get_instance() {
+//     static application instance;
+//     return instance;
+// }
 
-    // 主消息循环
-    while (is_running_) {
-        // 处理消息
-        if (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
-            if (msg.message == WM_QUIT) {
-                is_running_ = false;
-                exit_code_ = static_cast<int>(msg.wParam);
-                break;
-            }
+// const wchar_t* application::get_window_class_name() {
+//     return WINDOW_CLASS_NAME;
+// }
 
-            TranslateMessage(&msg);
-            DispatchMessageW(&msg);
-        }
-        // 空闲处理
-        else {
-            bool has_idle_work = false;
-            for (const auto& handler : idle_handlers_) {
-                if (handler()) {
-                    has_idle_work = true;
-                }
-            }
+// void application::register_window_class() {
+//     if (s_window_class_registered) {
+//         return;
+//     }
 
-            // 如果没有空闲任务，等待消息
-            if (!has_idle_work) {
-                WaitMessage();
-            }
-        }
-    }
+//     WNDCLASSEXW wc = {};
+//     wc.cbSize = sizeof(WNDCLASSEXW);
+//     wc.style = CS_HREDRAW | CS_VREDRAW;
+//     wc.lpfnWndProc = &application::global_window_proc;
+//     wc.cbClsExtra = 0;
+//     wc.cbWndExtra = 0;
+//     wc.hInstance = GetModuleHandle(nullptr);
+//     wc.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
+//     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+//     wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+//     wc.lpszMenuName = nullptr;
+//     wc.lpszClassName = WINDOW_CLASS_NAME;
+//     wc.hIconSm = LoadIcon(nullptr, IDI_APPLICATION);
 
-    return exit_code_;
-}
+//     s_window_class_registered = RegisterClassExW(&wc) != 0;
+//     if (!s_window_class_registered) {
+//         throw std::runtime_error("Failed to register window class");
+//     }
+// }
 
-void application::quit(int exit_code) {
-    exit_code_ = exit_code;
-    is_running_ = false;
-    PostQuitMessage(exit_code);
-}
+// LRESULT CALLBACK application::global_window_proc(HWND hwnd, UINT msg,
+//                                                  WPARAM w_param,
+//                                                  LPARAM l_param) {
+//     // 查找窗口实例
+//     window* win = find_window(hwnd);
 
-void application::add_idle_handler(const idle_handler& handler) {
-    idle_handlers_.push_back(handler);
-}
+//     if (win) {
+//         // 窗口已注册，派遣消息
+//         return win->handle_message(msg, w_param, l_param);
+//     } else if (msg == WM_NCCREATE) {
+//         // 窗口创建时，保存窗口实例
+//         LPCREATESTRUCTW cs = reinterpret_cast<LPCREATESTRUCTW>(l_param);
+//         window* new_win = reinterpret_cast<window*>(cs->lpCreateParams);
 
-bool application::process_messages() {
-    MSG msg = {};
-    bool has_message = PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE) != 0;
+//         if (new_win) {
+//             // 在 WM_CREATE 之前注册窗口
+//             SetWindowLongPtrW(hwnd, GWLP_USERDATA,
+//                               reinterpret_cast<LONG_PTR>(new_win));
+//             register_window(hwnd, new_win);
 
-    if (has_message) {
-        if (msg.message == WM_QUIT) {
-            is_running_ = false;
-            exit_code_ = static_cast<int>(msg.wParam);
-            return false;
-        }
+//             // 设置窗口句柄
+//             new_win->set_handle_internal(hwnd);
 
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
-    }
+//             // 调用窗口的创建后处理
+//             new_win->on_create();
 
-    return has_message;
-}
+//             // 让窗口处理 WM_NCCREATE
+//             return new_win->handle_message(msg, w_param, l_param);
+//         }
+//     }
 
-}  // namespace win32
+//     // 默认处理
+//     return DefWindowProcW(hwnd, msg, w_param, l_param);
+// }
+
+// LRESULT application::dispatch_to_window(HWND hwnd, UINT msg, WPARAM w_param,
+//                                         LPARAM l_param) {
+//     window* win = find_window(hwnd);
+//     if (win) {
+//         return win->handle_message(msg, w_param, l_param);
+//     }
+//     return DefWindowProcW(hwnd, msg, w_param, l_param);
+// }
+
+// void application::register_window(HWND hwnd, window* win) {
+//     std::lock_guard<std::mutex> lock(s_window_map_mutex);
+//     s_window_map[hwnd] = win;
+// }
+
+// void application::unregister_window(HWND hwnd) {
+//     std::lock_guard<std::mutex> lock(s_window_map_mutex);
+//     s_window_map.erase(hwnd);
+// }
+
+// window* application::find_window(HWND hwnd) {
+//     std::lock_guard<std::mutex> lock(s_window_map_mutex);
+//     auto it = s_window_map.find(hwnd);
+//     if (it != s_window_map.end()) {
+//         return it->second;
+//     }
+
+//     // 尝试从 USERDATA 获取
+//     LONG_PTR user_data = GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+//     if (user_data) {
+//         return reinterpret_cast<window*>(user_data);
+//     }
+
+//     return nullptr;
+// }
+
+// int application::run() {
+//     if (m_running) {
+//         throw std::runtime_error("Application is already running");
+//     }
+
+//     m_running = true;
+//     m_exit_code = 0;
+
+//     // 注册窗口类
+//     register_window_class();
+
+//     // 创建所有窗口
+//     for (auto& win : m_windows) {
+//         if (win && !win->create()) {
+//             quit(-1);
+//             return m_exit_code;
+//         }
+//     }
+
+//     // 显示所有窗口
+//     for (auto& win : m_windows) {
+//         if (win) {
+//             win->show();
+//         }
+//     }
+
+//     // 主消息循环
+//     MSG msg = {};
+
+//     while (m_running) {
+//         // 处理消息
+//         if (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+//             if (msg.message == WM_QUIT) {
+//                 m_running = false;
+//                 m_exit_code = static_cast<int>(msg.wParam);
+//                 break;
+//             }
+
+//             // 翻译和分发消息
+//             TranslateMessage(&msg);
+
+//             if (msg.hwnd) {
+//                 // 有窗口句柄，派遣到对应窗口
+//                 DispatchMessageW(&msg);
+//             } else {
+//                 // 无窗口句柄的消息
+//                 DispatchMessageW(&msg);
+//             }
+//         } else {
+//             // 空闲处理
+//             for (const auto& callback : m_idle_callbacks) {
+//                 if (!m_running) break;
+//                 callback();
+//             }
+
+//             // 避免CPU占用过高
+//             if (m_idle_callbacks.empty()) {
+//                 Sleep(1);
+//             }
+//         }
+//     }
+
+//     // 清理
+//     std::lock_guard<std::mutex> lock(s_window_map_mutex);
+//     s_window_map.clear();
+
+//     return m_exit_code;
+// }
+
+// void application::add_window(std::shared_ptr<window> win) {
+//     if (!win) {
+//         throw std::invalid_argument("Window cannot be null");
+//     }
+
+//     m_windows.push_back(win);
+// }
+
+// void application::remove_window(HWND hwnd) {
+//     m_windows.erase(std::remove_if(m_windows.begin(), m_windows.end(),
+//                                    [hwnd](const std::shared_ptr<window>& win) {
+//                                        return win && win->get_handle() == hwnd;
+//                                    }),
+//                     m_windows.end());
+
+//     unregister_window(hwnd);
+// }
+
+// void application::quit(int exit_code) {
+//     m_exit_code = exit_code;
+//     m_running = false;
+
+//     // 销毁所有窗口
+//     for (auto& win : m_windows) {
+//         if (win && win->get_handle()) {
+//             DestroyWindow(win->get_handle());
+//         }
+//     }
+//     m_windows.clear();
+
+//     // 发送退出消息
+//     PostQuitMessage(exit_code);
+// }
