@@ -198,7 +198,22 @@ LRESULT CALLBACK window_resource::global_window_proc(HWND hwnd, UINT u_msg,
 
     // 处理消息
     if (win) {
-        return win->window_proc(u_msg, w_param, l_param);
+        LRESULT result = win->window_proc(u_msg, w_param, l_param);
+
+        // 处理销毁消息，检查是否是最后一个窗口
+        if (u_msg == WM_DESTROY) {
+            std::lock_guard<std::mutex> lock(windows_mutex_);
+            // 确保从映射表中移除
+            instance.windows_.erase(hwnd);
+
+            // 检查是否还有窗口存在
+            if (instance.windows_.empty()) {
+                // 这是最后一个窗口，退出程序
+                PostQuitMessage(0);
+            }
+        }
+
+        return result;
     }
 
     // 默认消息处理

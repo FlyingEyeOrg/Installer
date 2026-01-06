@@ -7,19 +7,26 @@
 
 #include "win32/window_resource.hpp"
 
+// 构造函数 - 创建默认窗口
 window::window(const std::wstring& title, int width, int height, DWORD style,
                HWND parent, HMENU menu) {
     // 使用默认窗口类创建
     create_internal(L"", title, width, height, style, parent, menu);
 }
 
+// 构造函数 - 创建指定类窗口
 window::window(const std::wstring& class_name, const std::wstring& title,
                int width, int height, DWORD style, HWND parent, HMENU menu) {
     // 使用指定窗口类创建
     create_internal(class_name, title, width, height, style, parent, menu);
 }
 
-window::~window() { destroy(); }
+// 析构函数
+window::~window() {
+    if (handle_) {
+        destroy();
+    }
+}
 
 // 移动构造函数
 window::window(window&& other) noexcept
@@ -39,6 +46,7 @@ window& window::operator=(window&& other) noexcept {
     return *this;
 }
 
+// 内部创建窗口实现
 bool window::create_internal(const std::wstring& class_name,
                              const std::wstring& title, int width, int height,
                              DWORD style, HWND parent, HMENU menu) {
@@ -47,11 +55,10 @@ bool window::create_internal(const std::wstring& class_name,
     }
 
     // 获取资源管理器
-    window_resource& resource = get_resource();
+    window_resource& resource = window_resource::get_instance();
 
-    // 获取 shared_ptr
-    auto self = std::static_pointer_cast<window>(
-        std::shared_ptr<window>(this, [](window*) {}));
+    // 使用正确的shared_ptr构造方式
+    auto self = std::shared_ptr<window>(this, [](window*) {});
 
     if (class_name.empty()) {
         // 使用默认窗口类
@@ -68,6 +75,7 @@ bool window::create_internal(const std::wstring& class_name,
     return handle_ != nullptr;
 }
 
+// 窗口过程函数
 LRESULT window::window_proc(UINT u_msg, WPARAM w_param, LPARAM l_param) {
     // 如果有自定义窗口过程，调用它
     if (custom_window_proc_) {
@@ -78,16 +86,20 @@ LRESULT window::window_proc(UINT u_msg, WPARAM w_param, LPARAM l_param) {
     return handle_message(u_msg, w_param, l_param);
 }
 
+// 设置自定义窗口过程
 void window::set_window_proc(window_proc_t proc) {
     custom_window_proc_ = std::move(proc);
 }
 
+// 获取窗口句柄
 HWND window::get_handle() const { return handle_; }
 
+// 检查窗口有效性
 bool window::is_valid() const {
     return handle_ != nullptr && IsWindow(handle_);
 }
 
+// 显示窗口
 void window::show(int n_cmd_show) {
     if (handle_) {
         ShowWindow(handle_, n_cmd_show);
@@ -95,30 +107,35 @@ void window::show(int n_cmd_show) {
     }
 }
 
+// 隐藏窗口
 void window::hide() {
     if (handle_) {
         ShowWindow(handle_, SW_HIDE);
     }
 }
 
+// 启用窗口
 void window::enable() {
     if (handle_) {
         EnableWindow(handle_, TRUE);
     }
 }
 
+// 禁用窗口
 void window::disable() {
     if (handle_) {
         EnableWindow(handle_, FALSE);
     }
 }
 
+// 设置窗口标题
 void window::set_title(const std::wstring& title) {
     if (handle_) {
         SetWindowTextW(handle_, title.c_str());
     }
 }
 
+// 获取窗口标题
 std::wstring window::get_title() const {
     if (!handle_) {
         return L"";
@@ -135,6 +152,7 @@ std::wstring window::get_title() const {
     return title;
 }
 
+// 获取窗口矩形
 RECT window::get_rect() const {
     RECT rect = {};
     if (handle_) {
@@ -143,6 +161,7 @@ RECT window::get_rect() const {
     return rect;
 }
 
+// 获取客户区矩形
 RECT window::get_client_rect() const {
     RECT rect = {};
     if (handle_) {
@@ -151,6 +170,7 @@ RECT window::get_client_rect() const {
     return rect;
 }
 
+// 设置窗口位置和大小
 void window::set_position(int x, int y, int width, int height, bool repaint) {
     if (handle_) {
         SetWindowPos(handle_, nullptr, x, y, width, height,
@@ -158,6 +178,7 @@ void window::set_position(int x, int y, int width, int height, bool repaint) {
     }
 }
 
+// 设置窗口大小
 void window::set_size(int width, int height, bool repaint) {
     if (handle_) {
         RECT rect = get_rect();
@@ -166,6 +187,7 @@ void window::set_size(int width, int height, bool repaint) {
     }
 }
 
+// 移动窗口
 void window::move(int x, int y, bool repaint) {
     if (handle_) {
         RECT rect = get_rect();
@@ -176,12 +198,14 @@ void window::move(int x, int y, bool repaint) {
     }
 }
 
+// 设置窗口焦点
 void window::set_focus() {
     if (handle_) {
         SetFocus(handle_);
     }
 }
 
+// 检查是否有焦点
 bool window::has_focus() const {
     if (handle_) {
         return GetFocus() == handle_;
@@ -189,19 +213,22 @@ bool window::has_focus() const {
     return false;
 }
 
+// 销毁窗口
 void window::destroy() {
     if (handle_) {
-        get_resource().destroy_window(handle_);
+        window_resource::get_instance().destroy_window(handle_);
         handle_ = nullptr;
     }
 }
 
+// 更新窗口
 void window::update() {
     if (handle_) {
         UpdateWindow(handle_);
     }
 }
 
+// 重绘窗口
 void window::repaint() {
     if (handle_) {
         InvalidateRect(handle_, nullptr, TRUE);
@@ -209,11 +236,12 @@ void window::repaint() {
     }
 }
 
+// 获取资源管理器实例
 window_resource& window::get_resource() {
     return window_resource::get_instance();
 }
 
-// 内部消息处理器
+// 内部消息处理
 LRESULT window::handle_message(UINT u_msg, WPARAM w_param, LPARAM l_param) {
     switch (u_msg) {
         case WM_CREATE:
@@ -273,55 +301,37 @@ LRESULT window::handle_message(UINT u_msg, WPARAM w_param, LPARAM l_param) {
     return DefWindowProcW(handle_, u_msg, w_param, l_param);
 }
 
-// 默认消息处理
+// 默认消息处理实现
 LRESULT window::on_create() { return 0; }
-
 LRESULT window::on_destroy() {
     handle_ = nullptr;
-    PostQuitMessage(0);
     return 0;
 }
-
 LRESULT window::on_close() {
     destroy();
     return 0;
 }
-
 LRESULT window::on_size(int width, int height) { return 0; }
-
 LRESULT window::on_move(int x, int y) { return 0; }
-
 LRESULT window::on_paint() {
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(handle_, &ps);
-
-    // 默认绘制窗口背景
     RECT rect;
     GetClientRect(handle_, &rect);
     FillRect(hdc, &rect, (HBRUSH)(COLOR_WINDOW + 1));
-
     EndPaint(handle_, &ps);
     return 0;
 }
-
 LRESULT window::on_mouse_move(int x, int y, WPARAM flags) { return 0; }
-
 LRESULT window::on_mouse_down(int x, int y, WPARAM button, WPARAM flags) {
     return 0;
 }
-
 LRESULT window::on_mouse_up(int x, int y, WPARAM button, WPARAM flags) {
     return 0;
 }
-
 LRESULT window::on_key_down(WPARAM key, LPARAM flags) { return 0; }
-
 LRESULT window::on_key_up(WPARAM key, LPARAM flags) { return 0; }
-
 LRESULT window::on_char(wchar_t ch, LPARAM flags) { return 0; }
-
 LRESULT window::on_command(WORD id, WORD code, HWND control) { return 0; }
-
 LRESULT window::on_notify(WPARAM id, LPARAM nmhdr) { return 0; }
-
 LRESULT window::on_timer(WPARAM timer_id) { return 0; }
