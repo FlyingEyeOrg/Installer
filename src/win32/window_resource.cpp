@@ -71,7 +71,7 @@ bool window_resource::register_window_class(const std::wstring& class_name,
     wc.style = style;
     wc.lpfnWndProc = custom_proc ? custom_proc : global_window_proc;
     wc.cbClsExtra = 0;
-    wc.cbWndExtra = sizeof(LONG_PTR);
+    wc.cbWndExtra = 0;
     wc.hInstance = instance_;
     wc.hIcon = h_icon;
     wc.hCursor = h_cursor;
@@ -177,8 +177,9 @@ LRESULT CALLBACK window_resource::global_window_proc(HWND hwnd, UINT u_msg,
         if (p_create && p_create->lpCreateParams) {
             window* win_ptr =
                 reinterpret_cast<window*>(p_create->lpCreateParams);
-
             std::lock_guard<std::mutex> lock(windows_mutex_);
+            // 设置窗口句柄
+            win_ptr->set_window_handle(hwnd);
             // 查找并更新临时注册的窗口
             auto it =
                 std::find_if(instance.windows_.begin(), instance.windows_.end(),

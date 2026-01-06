@@ -9,12 +9,13 @@
 #include <memory>
 #include <string>
 
-
 // 前向声明
 class window_resource;
 
 // 窗口基类
 class window {
+    friend class window_resource;
+
    public:
     // 窗口过程函数类型
     using window_proc_t = std::function<LRESULT(window*, UINT, WPARAM, LPARAM)>;
@@ -117,4 +118,10 @@ class window {
 
     // 内部消息处理
     LRESULT handle_message(UINT u_msg, WPARAM w_param, LPARAM l_param);
+
+    /// @brief 设置窗口句柄
+    /// @param window_handle 窗口句柄
+    void set_window_handle(HWND window_handle) {
+        this->handle_ = window_handle;
+    }
 };
