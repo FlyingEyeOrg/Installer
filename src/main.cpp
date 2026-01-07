@@ -1,7 +1,8 @@
 #include <string>
 
-#include "win32/window.hpp"
-#include "win32/window_resource.hpp"
+#include "windows/application.hpp"
+#include "windows/window.hpp"
+#include "windows/window_resource.hpp"
 
 class my_window : public window {
    public:
@@ -50,13 +51,13 @@ int main() {
     my_window main_window(L"主窗口", 800, 600);
     main_window.show();
 
-     // 创建窗口（在构造函数中自动创建）
+    // 创建窗口（在构造函数中自动创建）
     my_window main_window1(L"主窗口", 800, 600);
     main_window1.show();
 
-    resource.run_message_loop();
+    application& app = application::instance();
 
-    resource.cleanup();
+    app.run();
 
     return 0;
 }

@@ -1,3 +1,4 @@
+// window_resource.hpp
 #pragma once
 // 使用 unicode api
 #define UNICODE
@@ -47,10 +48,6 @@ class window_resource {
     static std::mutex windows_mutex_;
     static std::mutex class_mutex_;
 
-    // 全局窗口过程
-    static LRESULT CALLBACK global_window_proc(HWND hwnd, UINT u_msg,
-                                               WPARAM w_param, LPARAM l_param);
-
     // 内部注册默认窗口类
     bool register_default_class();
 
@@ -70,7 +67,7 @@ class window_resource {
         HBRUSH hbr_background = (HBRUSH)(COLOR_WINDOW + 1),
         LPCWSTR lpsz_menu_name = nullptr, HICON h_icon_sm = nullptr);
 
-    // 注册窗口类（使用默认窗口过程）
+    // 注册窗口类（使用应用程序全局窗口过程）
     bool register_window_class_default(
         const std::wstring& class_name, UINT style = CS_HREDRAW | CS_VREDRAW,
         HICON h_icon = nullptr,
@@ -91,6 +88,7 @@ class window_resource {
                                   int height, std::shared_ptr<window> win,
                                   HWND hwnd_parent = nullptr,
                                   HMENU h_menu = nullptr);
+
     // 检查窗口类是否已注册
     bool is_class_registered(const std::wstring& class_name) const;
 
@@ -117,8 +115,11 @@ class window_resource {
     // 获取窗口实例数量
     std::size_t get_window_count() const;
 
-    // 消息循环辅助函数
-    int run_message_loop();
+    // 获取窗口映射（供application使用）
+    const std::unordered_map<HWND, std::shared_ptr<window>>& get_windows_map()
+        const {
+        return windows_;
+    }
 
    private:
     window_resource();

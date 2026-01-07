@@ -10,11 +10,12 @@
 #include <string>
 
 // 前向声明
+class application;
 class window_resource;
 
 // 窗口基类
 class window {
-    friend class window_resource;
+    friend class application;
 
    public:
     // 窗口过程函数类型

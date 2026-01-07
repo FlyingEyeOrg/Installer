@@ -1,11 +1,11 @@
-#include "win32/window.hpp"
+#include "windows/window.hpp"
 
 #include <windowsx.h>
 
 #include <memory>
 #include <utility>
 
-#include "win32/window_resource.hpp"
+#include "windows/window_resource.hpp"
 
 // 构造函数 - 创建默认窗口
 window::window(const std::wstring& title, int width, int height, DWORD style,

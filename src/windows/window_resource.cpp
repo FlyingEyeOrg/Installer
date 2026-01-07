@@ -1,8 +1,10 @@
-#include "win32/window_resource.hpp"
+// window_resource.cpp
+#include "windows/window_resource.hpp"
 
 #include <algorithm>
 
-#include "win32/window.hpp"
+#include "windows/application.hpp"
+#include "windows/window.hpp"
 
 // 静态成员初始化
 std::mutex window_resource::windows_mutex_;
@@ -48,7 +50,9 @@ bool window_resource::register_window_class(const std::wstring& class_name,
     WNDCLASSEXW wc = {};
     wc.cbSize = sizeof(WNDCLASSEXW);
     wc.style = style;
-    wc.lpfnWndProc = custom_proc ? custom_proc : global_window_proc;
+    wc.lpfnWndProc = custom_proc
+                         ? custom_proc
+                         : application::instance().get_global_window_proc();
     wc.hInstance = instance_;
     wc.hIcon = h_icon;
     wc.hCursor = h_cursor;
@@ -61,10 +65,15 @@ bool window_resource::register_window_class(const std::wstring& class_name,
 
     // 保存窗口类信息
     registered_classes_[class_name] = window_class_info{
-        class_name,     custom_proc ? custom_proc : global_window_proc,
-        style,          h_icon,
-        h_cursor,       hbr_background,
-        lpsz_menu_name, h_icon_sm};
+        class_name,
+        custom_proc ? custom_proc
+                    : application::instance().get_global_window_proc(),
+        style,
+        h_icon,
+        h_cursor,
+        hbr_background,
+        lpsz_menu_name,
+        h_icon_sm};
 
     return true;
 }
@@ -130,59 +139,6 @@ HWND window_resource::create_window_with_class(const std::wstring& class_name,
     return hwnd;
 }
 
-LRESULT CALLBACK window_resource::global_window_proc(HWND hwnd, UINT u_msg,
-                                                     WPARAM w_param,
-                                                     LPARAM l_param) {
-    window_resource& instance = get_instance();
-    std::shared_ptr<window> win = nullptr;
-
-    {
-        std::lock_guard<std::mutex> lock(windows_mutex_);
-        auto it = instance.windows_.find(hwnd);
-        if (it != instance.windows_.end()) {
-            win = it->second;
-        }
-    }
-
-    // 处理创建消息
-    if (u_msg == WM_NCCREATE && !win) {
-        CREATESTRUCTW* p_create = reinterpret_cast<CREATESTRUCTW*>(l_param);
-        if (p_create && p_create->lpCreateParams) {
-            window* win_ptr =
-                reinterpret_cast<window*>(p_create->lpCreateParams);
-            std::lock_guard<std::mutex> lock(windows_mutex_);
-
-            win_ptr->set_window_handle(hwnd);
-            auto it =
-                std::find_if(instance.windows_.begin(), instance.windows_.end(),
-                             [win_ptr](const auto& pair) {
-                                 return pair.second.get() == win_ptr;
-                             });
-
-            // 注册窗口类到窗口注册表
-            if (it != instance.windows_.end()) {
-                win = it->second;
-                instance.windows_.erase(it);
-                instance.windows_[hwnd] = win;
-            }
-        }
-    }
-
-    if (win) {
-        LRESULT result = win->window_proc(u_msg, w_param, l_param);
-
-        if (u_msg == WM_DESTROY) {
-            // 窗口销毁后，从窗口注册表中注销窗口
-            std::lock_guard<std::mutex> lock(windows_mutex_);
-            instance.windows_.erase(hwnd);
-        }
-
-        return result;
-    }
-
-    return DefWindowProcW(hwnd, u_msg, w_param, l_param);
-}
-
 std::shared_ptr<window> window_resource::find_window(HWND hwnd) const {
     std::lock_guard<std::mutex> lock(windows_mutex_);
     auto it = windows_.find(hwnd);
@@ -224,13 +180,4 @@ std::size_t window_resource::get_window_count() const {
     return std::count_if(
         windows_.begin(), windows_.end(),
         [](const auto& pair) { return pair.first != nullptr; });
-}
-
-int window_resource::run_message_loop() {
-    MSG msg = {};
-    while (GetMessageW(&msg, nullptr, 0, 0)) {
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
-    }
-    return static_cast<int>(msg.wParam);
 }
