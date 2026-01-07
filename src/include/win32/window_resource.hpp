@@ -51,12 +51,6 @@ class window_resource {
     static LRESULT CALLBACK global_window_proc(HWND hwnd, UINT u_msg,
                                                WPARAM w_param, LPARAM l_param);
 
-    // 注册窗口实例
-    void register_window(HWND hwnd, std::shared_ptr<window> win);
-
-    // 注销窗口实例
-    void unregister_window(HWND hwnd);
-
     // 内部注册默认窗口类
     bool register_default_class();
 
@@ -90,14 +84,13 @@ class window_resource {
                        std::shared_ptr<window> win, HWND hwnd_parent = nullptr,
                        HMENU h_menu = nullptr);
 
-    // 创建窗口（指定窗口类）
+    // 创建指定窗口类的窗口
     HWND create_window_with_class(const std::wstring& class_name,
                                   const std::wstring& window_name,
                                   DWORD dw_style, int x, int y, int width,
                                   int height, std::shared_ptr<window> win,
                                   HWND hwnd_parent = nullptr,
                                   HMENU h_menu = nullptr);
-
     // 检查窗口类是否已注册
     bool is_class_registered(const std::wstring& class_name) const;
 
@@ -106,20 +99,11 @@ class window_resource {
         return default_class_name_;
     }
 
-    // 获取已注册的窗口类列表
-    std::vector<std::wstring> get_registered_classes() const;
-
-    // 注销指定的窗口类
-    bool unregister_class(const std::wstring& class_name);
-
-    // 销毁窗口
-    void destroy_window(HWND hwnd);
-
     // 查找窗口实例
     std::shared_ptr<window> find_window(HWND hwnd) const;
 
     // 获取当前实例
-    HINSTANCE get_current_instance() const;
+    HINSTANCE get_current_instance() const { return instance_; }
 
     // 清理所有窗口资源
     void cleanup_all_windows();
@@ -133,14 +117,8 @@ class window_resource {
     // 获取窗口实例数量
     std::size_t get_window_count() const;
 
-    // 获取特定类的窗口数量
-    std::size_t get_window_count_by_class(const std::wstring& class_name) const;
-
     // 消息循环辅助函数
     int run_message_loop();
-
-    // 处理待处理消息
-    bool process_pending_messages();
 
    private:
     window_resource();

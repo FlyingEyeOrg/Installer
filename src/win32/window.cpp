@@ -216,7 +216,6 @@ bool window::has_focus() const {
 // 销毁窗口
 void window::destroy() {
     if (handle_) {
-        window_resource::get_instance().destroy_window(handle_);
         handle_ = nullptr;
     }
 }
