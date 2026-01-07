@@ -303,6 +303,7 @@ LRESULT window::handle_message(UINT u_msg, WPARAM w_param, LPARAM l_param) {
 // 默认消息处理实现
 LRESULT window::on_create() { return 0; }
 LRESULT window::on_destroy() {
+    ::DestroyWindow(handle_);
     handle_ = nullptr;
     return 0;
 }

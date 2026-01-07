@@ -115,11 +115,17 @@ class window_resource {
     // 获取窗口实例数量
     std::size_t get_window_count() const;
 
-    // 获取窗口映射（供application使用）
-    const std::unordered_map<HWND, std::shared_ptr<window>>& get_windows_map()
-        const {
-        return windows_;
-    }
+    // 更新窗口映射（从空句柄更新为实际句柄）
+    bool update_window_mapping(HWND hwnd, window* win_ptr);
+
+    // 从映射中移除窗口
+    bool remove_window_mapping(HWND hwnd);
+
+    // 检查窗口是否存在
+    bool window_exists(HWND hwnd) const;
+
+    // 获取所有窗口句柄
+    std::vector<HWND> get_all_window_handles() const;
 
    private:
     window_resource();

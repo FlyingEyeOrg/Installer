@@ -175,9 +175,55 @@ void window_resource::cleanup() {
     unregister_all_classes();
 }
 
+bool window_resource::update_window_mapping(HWND hwnd, window* win_ptr) {
+    if (!hwnd || !win_ptr) return false;
+
+    std::lock_guard<std::mutex> lock(windows_mutex_);
+
+    // 查找是否有以空句柄存储的对应窗口
+    auto it = std::find_if(
+        windows_.begin(), windows_.end(), [win_ptr](const auto& pair) {
+            return !pair.first && pair.second.get() == win_ptr;
+        });
+
+    if (it != windows_.end()) {
+        // 找到对应的空句柄映射，更新为实际句柄
+        auto win = it->second;
+        windows_.erase(it);
+        windows_[hwnd] = win;
+        return true;
+    }
+
+    return false;
+}
+
+bool window_resource::remove_window_mapping(HWND hwnd) {
+    std::lock_guard<std::mutex> lock(windows_mutex_);
+    return windows_.erase(hwnd) > 0;
+}
+
 std::size_t window_resource::get_window_count() const {
     std::lock_guard<std::mutex> lock(windows_mutex_);
     return std::count_if(
         windows_.begin(), windows_.end(),
         [](const auto& pair) { return pair.first != nullptr; });
+}
+
+bool window_resource::window_exists(HWND hwnd) const {
+    std::lock_guard<std::mutex> lock(windows_mutex_);
+    return windows_.find(hwnd) != windows_.end();
+}
+
+std::vector<HWND> window_resource::get_all_window_handles() const {
+    std::lock_guard<std::mutex> lock(windows_mutex_);
+    std::vector<HWND> handles;
+    handles.reserve(windows_.size());
+
+    for (const auto& pair : windows_) {
+        if (pair.first) {  // 只返回有效的句柄
+            handles.push_back(pair.first);
+        }
+    }
+
+    return handles;
 }

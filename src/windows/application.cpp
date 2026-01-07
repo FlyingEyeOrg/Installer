@@ -69,22 +69,11 @@ LRESULT application::impl::window_proc(HWND hwnd, UINT u_msg, WPARAM w_param,
                 reinterpret_cast<window*>(p_create->lpCreateParams);
             win_ptr->set_window_handle(hwnd);
 
-            // 查找并更新窗口映射
-            auto& windows =
-                const_cast<std::unordered_map<HWND, std::shared_ptr<window>>&>(
-                    resource.get_windows_map());
+            // 使用安全的更新方法
+            resource.update_window_mapping(hwnd, win_ptr);
 
-            // 从空句柄中查找对应窗口
-            auto it = std::find_if(
-                windows.begin(), windows.end(), [win_ptr](const auto& pair) {
-                    return !pair.first && pair.second.get() == win_ptr;
-                });
-
-            if (it != windows.end()) {
-                win = it->second;
-                windows.erase(it);
-                windows[hwnd] = win;
-            }
+            // 重新查找窗口
+            win = resource.find_window(hwnd);
         }
     }
 
@@ -92,6 +81,9 @@ LRESULT application::impl::window_proc(HWND hwnd, UINT u_msg, WPARAM w_param,
         LRESULT result = win->window_proc(u_msg, w_param, l_param);
 
         if (u_msg == WM_DESTROY) {
+            // 窗口销毁时从映射中移除
+            resource.remove_window_mapping(hwnd);
+
             // 检查是否所有窗口都已关闭
             if (resource.get_window_count() == 0) {
                 application::instance().quit();
