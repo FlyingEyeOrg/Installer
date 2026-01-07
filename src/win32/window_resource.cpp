@@ -172,21 +172,9 @@ LRESULT CALLBACK window_resource::global_window_proc(HWND hwnd, UINT u_msg,
         LRESULT result = win->window_proc(u_msg, w_param, l_param);
 
         if (u_msg == WM_DESTROY) {
+            // 窗口销毁后，注销窗口类
             std::lock_guard<std::mutex> lock(windows_mutex_);
             instance.windows_.erase(hwnd);
-
-            // 检查是否还有窗口存在
-            bool has_windows = false;
-            for (const auto& pair : instance.windows_) {
-                if (pair.first != nullptr) {
-                    has_windows = true;
-                    break;
-                }
-            }
-
-            if (!has_windows) {
-                PostQuitMessage(0);
-            }
         }
 
         return result;
