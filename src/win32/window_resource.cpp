@@ -127,9 +127,18 @@ HWND window_resource::create_window_with_class(const std::wstring& class_name,
         }
     }
 
-    // 先注册一个临时位置
+    // 检查是否已经存在相同的window对象
     {
         std::lock_guard<std::mutex> lock(windows_mutex_);
+        // 防止重复注册同一个window对象
+        auto it = std::find_if(
+            windows_.begin(), windows_.end(),
+            [&win](const auto& pair) { return pair.second == win; });
+        if (it != windows_.end()) {
+            // 如果已经存在，移除旧的
+            windows_.erase(it);
+        }
+        // 临时注册
         windows_[nullptr] = win;
     }
 
@@ -140,8 +149,12 @@ HWND window_resource::create_window_with_class(const std::wstring& class_name,
     if (!hwnd) {
         // 创建失败，清理临时注册
         std::lock_guard<std::mutex> lock(windows_mutex_);
-        auto it = windows_.find(nullptr);
-        if (it != windows_.end() && it->second.get() == win.get()) {
+        // 只移除与这个win对象关联的nullptr条目
+        auto it = std::find_if(windows_.begin(), windows_.end(),
+                               [&win](const auto& pair) {
+                                   return !pair.first && pair.second == win;
+                               });
+        if (it != windows_.end()) {
             windows_.erase(it);
         }
     }
@@ -266,22 +279,28 @@ std::vector<std::wstring> window_resource::get_registered_classes() const {
 }
 
 void window_resource::cleanup_all_windows() {
-    std::lock_guard<std::mutex> lock(windows_mutex_);
-
-    // 创建副本，避免在循环中修改容器
+    std::vector<std::shared_ptr<window>> windows_copy;
     std::vector<HWND> window_handles;
-    for (const auto& pair : windows_) {
-        if (pair.first) {  // 跳过 nullptr 键
-            window_handles.push_back(pair.first);
+
+    {
+        std::lock_guard<std::mutex> lock(windows_mutex_);
+
+        // 收集所有有效窗口句柄
+        for (const auto& pair : windows_) {
+            if (pair.first) {  // 跳过 nullptr 键
+                window_handles.push_back(pair.first);
+                windows_copy.push_back(pair.second);
+            }
         }
+
+        // 清空映射，防止递归问题
+        windows_.clear();
     }
 
-    // 销毁所有窗口
+    // 销毁所有窗口（现在映射表已清空，不会触发递归）
     for (HWND hwnd : window_handles) {
         ::DestroyWindow(hwnd);
     }
-
-    windows_.clear();
 }
 
 void window_resource::unregister_all_classes() {
