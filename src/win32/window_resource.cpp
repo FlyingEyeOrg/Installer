@@ -5,7 +5,6 @@
 #include "win32/window.hpp"
 
 // 静态成员初始化
-window_resource* window_resource::global_instance_ = nullptr;
 std::mutex window_resource::windows_mutex_;
 std::mutex window_resource::class_mutex_;
 
@@ -16,18 +15,12 @@ window_resource::window_resource() {
     register_default_class();
 }
 
-window_resource::~window_resource() {
-    cleanup();
-    if (global_instance_ == this) {
-        global_instance_ = nullptr;
-    }
-}
+window_resource::~window_resource() { cleanup(); }
 
 window_resource& window_resource::get_instance() {
-    if (!global_instance_) {
-        global_instance_ = new window_resource();
-    }
-    return *global_instance_;
+    // 线程安全，编译器会在幕后处理所有同步
+    static window_resource instance;
+    return instance;
 }
 
 bool window_resource::register_default_class() {

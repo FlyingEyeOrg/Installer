@@ -44,7 +44,6 @@ class window_resource {
     // 窗口句柄 -> 窗口实例
     std::unordered_map<HWND, std::shared_ptr<window>> windows_;
 
-    static window_resource* global_instance_;
     static std::mutex windows_mutex_;
     static std::mutex class_mutex_;
 
