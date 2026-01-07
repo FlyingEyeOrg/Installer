@@ -159,7 +159,7 @@ LRESULT CALLBACK window_resource::global_window_proc(HWND hwnd, UINT u_msg,
                                  return pair.second.get() == win_ptr;
                              });
 
-            // 注册窗口到注册表
+            // 注册窗口类到窗口注册表
             if (it != instance.windows_.end()) {
                 win = it->second;
                 instance.windows_.erase(it);
@@ -172,7 +172,7 @@ LRESULT CALLBACK window_resource::global_window_proc(HWND hwnd, UINT u_msg,
         LRESULT result = win->window_proc(u_msg, w_param, l_param);
 
         if (u_msg == WM_DESTROY) {
-            // 窗口销毁后，注销窗口类
+            // 窗口销毁后，从窗口注册表中注销窗口
             std::lock_guard<std::mutex> lock(windows_mutex_);
             instance.windows_.erase(hwnd);
         }
