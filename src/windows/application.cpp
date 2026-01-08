@@ -19,8 +19,6 @@ class application::impl {
     std::function<void()> init_handler_;
     std::function<void()> exit_handler_;
 
-    // 窗口映射
-    window_map windows_;
     mutable std::mutex windows_mutex_;
 
     // 处理消息过滤器
