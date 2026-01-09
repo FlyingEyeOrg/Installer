@@ -28,7 +28,6 @@ class window {
 
    private:
     std::unique_ptr<windows::hwnd_wrapper> wrapper_;
-    window_proc_t custom_window_proc_;
 
     // 将 hwnd_wrapper 的 hook 转换为 window 的消息处理
     LRESULT handle_hook(HWND hwnd, UINT u_msg, WPARAM w_param, LPARAM l_param,
@@ -39,10 +38,7 @@ class window {
         LRESULT result = handle_message(u_msg, w_param, l_param);
 
         // 如果有自定义窗口过程，调用它
-        if (custom_window_proc_) {
-            result = custom_window_proc_(this, u_msg, w_param, l_param);
-            handled = true;
-        } else if (result != 0) {
+        if (result != 0) {
             handled = true;
         }
 
@@ -139,9 +135,7 @@ class window {
     window& operator=(const window&) = delete;
 
     // 允许移动
-    window(window&& other) noexcept
-        : wrapper_(std::move(other.wrapper_)),
-          custom_window_proc_(std::move(other.custom_window_proc_)) {
+    window(window&& other) noexcept : wrapper_(std::move(other.wrapper_)) {
         if (wrapper_) {
             update_hook();
         }
@@ -150,7 +144,6 @@ class window {
     window& operator=(window&& other) noexcept {
         if (this != &other) {
             wrapper_ = std::move(other.wrapper_);
-            custom_window_proc_ = std::move(other.custom_window_proc_);
             if (wrapper_) {
                 update_hook();
             }
@@ -200,11 +193,6 @@ class window {
     // 窗口过程
     virtual LRESULT window_proc(UINT u_msg, WPARAM w_param, LPARAM l_param) {
         return handle_message(u_msg, w_param, l_param);
-    }
-
-    // 设置自定义窗口过程
-    void set_window_proc(window_proc_t proc) {
-        custom_window_proc_ = std::move(proc);
     }
 
     // 窗口操作
@@ -324,34 +312,6 @@ class window {
             ::UpdateWindow(wrapper_->get_handle());
         }
     }
-
-    // Hook 管理
-    void add_hook(const hook_func& hook) {
-        if (wrapper_) {
-            wrapper_->add_hook(hook);
-        }
-    }
-
-    void add_hook(hook_func&& hook) {
-        if (wrapper_) {
-            wrapper_->add_hook(std::move(hook));
-        }
-    }
-
-    bool remove_hook(const hook_func& hook) {
-        if (wrapper_) {
-            return wrapper_->remove_hook(hook);
-        }
-        return false;
-    }
-
-    void clear_hooks() {
-        if (wrapper_) {
-            wrapper_->clear_hooks();
-        }
-    }
-
-    size_t hook_count() const { return wrapper_ ? wrapper_->hook_count() : 0; }
 
     // 消息处理虚函数
     virtual LRESULT on_create() { return 0; }
