@@ -61,14 +61,66 @@ class hwnd_wrapper {
                               bool& handled);
 
    public:
+    // 主构造函数 - 没有默认值
+    hwnd_wrapper(DWORD class_style, DWORD window_exstyle, DWORD window_style,
+                 const std::wstring& name, int x, int y, int width, int height,
+                 HWND parent, const std::vector<hwnd_wrapper_hook_func>& hooks);
+
+    // 重载1：最常用的构造函数，只提供名称
     hwnd_wrapper(const std::wstring& name,
-                 DWORD class_style = CS_HREDRAW | CS_VREDRAW,
-                 DWORD window_exstyle = 0,
-                 DWORD window_style = WS_OVERLAPPEDWINDOW,
-                 int x = CW_USEDEFAULT, int y = CW_USEDEFAULT,
-                 int width = CW_USEDEFAULT, int height = CW_USEDEFAULT,
-                 HWND parent = nullptr,
-                 const std::vector<hwnd_wrapper_hook_func>& hooks = {});
+                 const std::vector<hwnd_wrapper_hook_func>& hooks)
+        : hwnd_wrapper(CS_HREDRAW | CS_VREDRAW,  // class_style
+                       0,                        // window_exstyle
+                       WS_OVERLAPPEDWINDOW,      // window_style
+                       name,                     // name
+                       CW_USEDEFAULT,            // x
+                       CW_USEDEFAULT,            // y
+                       CW_USEDEFAULT,            // width
+                       CW_USEDEFAULT,            // height
+                       nullptr,                  // parent
+                       hooks)                    // hooks
+    {}
+
+    // 重载2：提供名称、样式和 hooks
+    hwnd_wrapper(const std::wstring& name, DWORD window_style,
+                 const std::vector<hwnd_wrapper_hook_func>& hooks)
+        : hwnd_wrapper(CS_HREDRAW | CS_VREDRAW,  // class_style
+                       0,                        // window_exstyle
+                       window_style,             // window_style
+                       name,                     // name
+                       CW_USEDEFAULT,            // x
+                       CW_USEDEFAULT,            // y
+                       CW_USEDEFAULT,            // width
+                       CW_USEDEFAULT,            // height
+                       nullptr,                  // parent
+                       hooks)                    // hooks
+    {}
+
+    // 重载3：提供名称、样式、位置大小和 hooks
+    hwnd_wrapper(const std::wstring& name, DWORD window_style, int x, int y,
+                 int width, int height,
+                 const std::vector<hwnd_wrapper_hook_func>& hooks)
+        : hwnd_wrapper(CS_HREDRAW | CS_VREDRAW,  // class_style
+                       0,                        // window_exstyle
+                       window_style,             // window_style
+                       name,                     // name
+                       x, y, width, height,      // 位置大小
+                       nullptr,                  // parent
+                       hooks)                    // hooks
+    {}
+
+    // 重载4：提供名称、扩展样式、样式、位置大小和 hooks
+    hwnd_wrapper(const std::wstring& name, DWORD window_exstyle,
+                 DWORD window_style, int x, int y, int width, int height,
+                 const std::vector<hwnd_wrapper_hook_func>& hooks)
+        : hwnd_wrapper(CS_HREDRAW | CS_VREDRAW,  // class_style
+                       window_exstyle,           // window_exstyle
+                       window_style,             // window_style
+                       name,                     // name
+                       x, y, width, height,      // 位置大小
+                       nullptr,                  // parent
+                       hooks)                    // hooks
+    {}
 
     virtual ~hwnd_wrapper();
 
