@@ -61,10 +61,10 @@ class hwnd_wrapper {
                               bool& handled);
 
    public:
-    hwnd_wrapper(DWORD class_style = CS_HREDRAW | CS_VREDRAW,
+    hwnd_wrapper(const std::wstring& name,
+                 DWORD class_style = CS_HREDRAW | CS_VREDRAW,
                  DWORD window_exstyle = 0,
                  DWORD window_style = WS_OVERLAPPEDWINDOW,
-                 const std::wstring& name = L"windows_app",
                  int x = CW_USEDEFAULT, int y = CW_USEDEFAULT,
                  int width = CW_USEDEFAULT, int height = CW_USEDEFAULT,
                  HWND parent = nullptr,

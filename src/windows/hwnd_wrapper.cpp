@@ -153,8 +153,8 @@ LRESULT CALLBACK hwnd_wrapper::wnd_proc(UINT u_msg, WPARAM w_param,
 }
 
 // 构造函数
-hwnd_wrapper::hwnd_wrapper(DWORD class_style, DWORD window_exstyle,
-                           DWORD window_style, const std::wstring& name, int x,
+hwnd_wrapper::hwnd_wrapper(const std::wstring& name, DWORD class_style,
+                           DWORD window_exstyle, DWORD window_style, int x,
                            int y, int width, int height, HWND parent,
                            const std::vector<hwnd_wrapper_hook_func>& hooks)
     : hooks_(hooks) {
