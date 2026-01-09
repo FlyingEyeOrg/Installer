@@ -15,7 +15,6 @@
 #include <vector>
 
 #include "hwnd_wrapper_hook.hpp"
-#include "hwnd_wrapper_utils.hpp"
 
 namespace windows {
 
