@@ -165,10 +165,10 @@ class window {
 
         // 创建 hwnd_wrapper
         wrapper_ = std::make_unique<windows::hwnd_wrapper>(
-            title,                    // title
             CS_HREDRAW | CS_VREDRAW,  // class_style
             0,                        // window_exstyle
             style,                    // window_style
+            title,                    // title
             CW_USEDEFAULT,            // x
             CW_USEDEFAULT,            // y
             width,                    // width
