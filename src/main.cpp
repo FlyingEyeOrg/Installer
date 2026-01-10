@@ -6,13 +6,15 @@
 
 using namespace windows;
 
+class main_window : public window {
+   public:
+    main_window(std::wstring title) : window(title) {}
+
+};
+
 int main() {
-    window main_window(L"title1");
-    main_window.show();
-
-    window main_window1(L"title2");
-    main_window1.show();
-
+    main_window main(L"HelloWorld");
+    main.show();
     application::run_app();
     return 0;
 }

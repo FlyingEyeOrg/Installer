@@ -38,16 +38,10 @@ window& window::operator=(window&& other) noexcept {
 // 将 hwnd_wrapper 的 hook 转换为 window 的消息处理
 LRESULT window::handle_hook(HWND hwnd, UINT u_msg, WPARAM w_param,
                             LPARAM l_param, bool& handled) {
-    handled = false;
-
+    set_handled();
     // 处理窗口消息
     LRESULT result = handle_message(u_msg, w_param, l_param);
-
-    // 如果有自定义窗口过程，调用它
-    if (result != 0) {
-        handled = true;
-    }
-
+    handled = is_handled();
     return result;
 }
 

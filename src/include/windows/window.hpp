@@ -21,6 +21,11 @@ class application;
 class window {
    private:
     std::unique_ptr<windows::hwnd_wrapper> wrapper_;
+    bool message_handled_;
+
+    void set_handled() { message_handled_ = true; }
+    void clear_handled() { message_handled_ = false; }
+    bool is_handled() const { return message_handled_; }
 
     // 将 hwnd_wrapper 的 hook 转换为 window 的消息处理
     LRESULT handle_hook(HWND hwnd, UINT u_msg, WPARAM w_param, LPARAM l_param,
