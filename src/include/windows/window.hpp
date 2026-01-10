@@ -19,13 +19,6 @@ class application;
 
 // 窗口基类
 class window {
-   public:
-    // 窗口过程函数类型
-    using window_proc_t = std::function<LRESULT(window*, UINT, WPARAM, LPARAM)>;
-
-    // hook 函数类型
-    using hook_func = windows::hwnd_wrapper_hook_func;
-
    private:
     std::unique_ptr<windows::hwnd_wrapper> wrapper_;
 

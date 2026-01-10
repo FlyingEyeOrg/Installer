@@ -128,7 +128,7 @@ bool window::create(const std::wstring& title, int width, int height,
         return this->handle_hook(hwnd, u_msg, w_param, l_param, handled);
     };
 
-    std::vector<hook_func> hooks = {hook};
+    std::vector<hwnd_wrapper_hook_func> hooks = {hwnd_wrapper_hook_func(hook)};
 
     // 创建 hwnd_wrapper
     wrapper_ = std::make_unique<windows::hwnd_wrapper>(
@@ -296,7 +296,7 @@ void window::update_hook() {
 
         // 移除旧的 hook 并添加新的
         wrapper_->clear_hooks();
-        wrapper_->add_hook(std::move(hook));
+        wrapper_->add_hook(hwnd_wrapper_hook_func(hook));
     }
 }
 }  // namespace windows

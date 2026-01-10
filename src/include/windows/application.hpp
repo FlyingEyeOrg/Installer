@@ -7,8 +7,6 @@
 #include <memory>
 #include <mutex>
 
-#include "window.hpp"
-
 namespace windows {
 
 class application {
