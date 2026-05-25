@@ -5,7 +5,6 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 project(installer LANGUAGES C CXX)
 
-# 包含自定义模块
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 include(setup_embedding)
 
@@ -13,45 +12,49 @@ find_package(fmt CONFIG REQUIRED)
 find_package(zstd CONFIG REQUIRED)
 find_package(WinElement CONFIG REQUIRED)
 
-# 包含所有源代码 CPP 文件
-file(GLOB_RECURSE CPP_FILES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+# 将非入口源文件编译为静态库，便于测试链接
+file(GLOB LIB_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/file.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/tar.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/zstd_compression.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/installer_context.cpp"
+)
 
-# 打印文件列表（调试用）
-message(STATUS "Found CPP files: ${CPP_FILES}")
+add_library(installer_lib STATIC ${LIB_SOURCES})
+setup_embedding_config(installer_lib)
+target_include_directories(installer_lib PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+target_link_libraries(installer_lib PUBLIC
+    fmt::fmt-header-only
+    zstd::libzstd
+    kernel32
+)
 
-add_executable(${PROJECT_NAME} ${CPP_FILES})
-# Debug 显示控制台，Release 纯 GUI（用 main() 作为入口点）
+# 主可执行文件
+add_executable(${PROJECT_NAME} src/main.cpp)
 set_target_properties(${PROJECT_NAME} PROPERTIES
     WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>
 )
 target_link_options(${PROJECT_NAME} PRIVATE
     $<$<NOT:$<CONFIG:Debug>>:/ENTRY:mainCRTStartup>
 )
-message(STATUS "控制台窗口: Debug=ON, Release=OFF")
 
-# 文件嵌入宏定义配置
-setup_embedding_config(${PROJECT_NAME})
-
-# 包含所有资源文件
 file(GLOB_RECURSE RC_FILES "${CMAKE_CURRENT_SOURCE_DIR}/src/assets/*.rc")
 file(GLOB_RECURSE ASSET_FILES "${CMAKE_CURRENT_SOURCE_DIR}/src/assets/*.*")
 
-# 资源文件变更，触发主函数重新编译
 set_source_files_properties(src/main.cpp PROPERTIES
     OBJECT_DEPENDS "${ASSET_FILES}"
 )
-
-# 添加资源依赖，将会设置 exe 图标
 target_sources(${PROJECT_NAME} PRIVATE ${RC_FILES})
-
 target_link_libraries(${PROJECT_NAME} PRIVATE
-    fmt::fmt-header-only
-    zstd::libzstd
+    installer_lib
     WinElement::winelement
-    kernel32
 )
 
-# 包含头文件目录
-target_include_directories(${PROJECT_NAME} PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
+# 测试
+option(BUILD_TESTING "Build tests" ON)
+if(BUILD_TESTING)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
