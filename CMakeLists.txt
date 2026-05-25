@@ -52,6 +52,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 )
 
 # 包含头文件目录
-target_include_directories(${PROJECT_NAME} PUBLIC 
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/include
+target_include_directories(${PROJECT_NAME} PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
