@@ -3,20 +3,21 @@
     "configurePresets": [
         {
             "name": "vcpkg",
-            "displayName": "Windows Ninja",
-            "generator": "Ninja",
+            "displayName": "VS 2022 x64",
+            "generator": "Visual Studio 17 2022",
+            "architecture": "x64",
             "binaryDir": "${sourceDir}/build",
             "cacheVariables": {
                 "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-                "VCPKG_TARGET_TRIPLET": "x64-mingw-static",
-                "CMAKE_BUILD_TYPE": "Debug"
+                "VCPKG_TARGET_TRIPLET": "x64-windows-static"
             }
         },
         {
             "name": "release",
             "inherits": "vcpkg",
+            "displayName": "VS 2022 x64 Release",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release"
+                "VCPKG_BUILD_TYPE": "release"
             }
         }
     ]

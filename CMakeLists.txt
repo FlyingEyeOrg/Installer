@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.30)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 project(installer LANGUAGES C CXX)
 
@@ -10,6 +11,7 @@ include(setup_embedding)
 
 find_package(fmt CONFIG REQUIRED)
 find_package(zstd CONFIG REQUIRED)
+find_package(WinElement CONFIG REQUIRED)
 
 # 包含所有源代码 CPP 文件
 file(GLOB_RECURSE CPP_FILES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
@@ -17,16 +19,15 @@ file(GLOB_RECURSE CPP_FILES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
 # 打印文件列表（调试用）
 message(STATUS "Found CPP files: ${CPP_FILES}")
 
-# 根据构建类型决定是否启用控制台
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    message(STATUS "构建类型: Debug - 启用控制台窗口")
-    # Debug 版本：显示控制台窗口（便于调试输出）
-    add_executable(${PROJECT_NAME} ${CPP_FILES})
-else()
-    message(STATUS "构建类型: ${CMAKE_BUILD_TYPE} - 禁用控制台窗口")
-    # Release 版本：纯 GUI 应用程序
-    add_executable(${PROJECT_NAME} WIN32 ${CPP_FILES})
-endif()
+add_executable(${PROJECT_NAME} ${CPP_FILES})
+# Debug 显示控制台，Release 纯 GUI（用 main() 作为入口点）
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>
+)
+target_link_options(${PROJECT_NAME} PRIVATE
+    $<$<NOT:$<CONFIG:Debug>>:/ENTRY:mainCRTStartup>
+)
+message(STATUS "控制台窗口: Debug=ON, Release=OFF")
 
 # 文件嵌入宏定义配置
 setup_embedding_config(${PROJECT_NAME})
@@ -43,14 +44,11 @@ set_source_files_properties(src/main.cpp PROPERTIES
 # 添加资源依赖，将会设置 exe 图标
 target_sources(${PROJECT_NAME} PRIVATE ${RC_FILES})
 
-# 链接必要的 Windows 库
-target_link_libraries(${PROJECT_NAME} PRIVATE 
+target_link_libraries(${PROJECT_NAME} PRIVATE
     fmt::fmt-header-only
     zstd::libzstd
-    comctl32      # 通用控件库
-    user32        # 用户界面函数
-    gdi32         # 图形设备接口
-    kernel32      # 核心系统函数
+    WinElement::winelement
+    kernel32
 )
 
 # 包含头文件目录
