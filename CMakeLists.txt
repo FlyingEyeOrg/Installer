@@ -18,6 +18,7 @@ file(GLOB LIB_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/tar.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/zstd_compression.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/installer_context.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/installer_controller.cpp"
 )
 
 add_library(installer_lib STATIC ${LIB_SOURCES})
