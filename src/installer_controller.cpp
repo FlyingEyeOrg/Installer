@@ -1,4 +1,5 @@
 #include "installer_controller.hpp"
+#include <Windows.h>
 
 namespace installer {
 using namespace winelement;
@@ -31,7 +32,8 @@ std::unique_ptr<UIElement> Wizard::build_footer() {
     cancel.set_text("Cancel")
         .set_type(controls::ButtonType::Default)
         .set_size(controls::ButtonSize::Default);
-    cancel.clicked() += [this](const controls::ButtonClickEvent&) { on_cancel(); };
+    cancel.clicked() +=
+        [this](const controls::ButtonClickEvent&) { on_cancel(); };
     cancel_btn_ = &cancel;
 
     auto& back = footer->append_new_child<controls::Button>();
@@ -72,8 +74,9 @@ std::unique_ptr<UIElement> Wizard::build_welcome() {
     page->append_child(make_spacer());
 
     auto& desc = page->append_new_child<controls::Text>();
-    desc.set_text("This wizard will guide you through the installation.\n\n"
-                  "Please click Next to continue.")
+    desc.set_text(
+            "This wizard will guide you through the installation.\n\n"
+            "Please click Next to continue.")
         .set_type(controls::TextType::Primary);
 
     return page;
@@ -105,27 +108,29 @@ std::unique_ptr<UIElement> Wizard::build_license() {
         [](layout::LayoutElement& item) { item.set_flex(1.0F); });
 
     auto& license_text = border.append_new_child<controls::Text>();
-    license_text.set_text(
-        "SOFTWARE LICENSE AGREEMENT\n\n"
-        "Copyright (c) 2024\n\n"
-        "Permission is hereby granted, free of charge, to any person "
-        "obtaining a copy of this software and associated documentation "
-        "files (the \"Software\"), to deal in the Software without "
-        "restriction, including without limitation the rights to use, "
-        "copy, modify, merge, publish, distribute, sublicense, and/or "
-        "sell copies of the Software, and to permit persons to whom the "
-        "Software is furnished to do so, subject to the following "
-        "conditions:\n\n"
-        "The above copyright notice and this permission notice shall be "
-        "included in all copies or substantial portions of the Software.\n\n"
-        "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY "
-        "KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE "
-        "WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR "
-        "PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR "
-        "COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER "
-        "LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, "
-        "ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE "
-        "USE OR OTHER DEALINGS IN THE SOFTWARE.")
+    license_text
+        .set_text(
+            "SOFTWARE LICENSE AGREEMENT\n\n"
+            "Copyright (c) 2024\n\n"
+            "Permission is hereby granted, free of charge, to any person "
+            "obtaining a copy of this software and associated documentation "
+            "files (the \"Software\"), to deal in the Software without "
+            "restriction, including without limitation the rights to use, "
+            "copy, modify, merge, publish, distribute, sublicense, and/or "
+            "sell copies of the Software, and to permit persons to whom the "
+            "Software is furnished to do so, subject to the following "
+            "conditions:\n\n"
+            "The above copyright notice and this permission notice shall be "
+            "included in all copies or substantial portions of the "
+            "Software.\n\n"
+            "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY "
+            "KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE "
+            "WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR "
+            "PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR "
+            "COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER "
+            "LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, "
+            "ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE "
+            "USE OR OTHER DEALINGS IN THE SOFTWARE.")
         .set_type(controls::TextType::Primary);
 
     auto& checkbox_row = page->append_new_child<controls::StackPanel>();
@@ -136,8 +141,9 @@ std::unique_ptr<UIElement> Wizard::build_license() {
     });
 
     auto& checkbox = checkbox_row.append_new_child<controls::Button>();
-    checkbox.set_text(license_accepted ? "[x] I accept the agreement"
-                                       : "[  ] I accept the agreement")
+    checkbox
+        .set_text(license_accepted ? "[x] I accept the agreement"
+                                   : "[  ] I accept the agreement")
         .set_type(controls::ButtonType::Text);
     checkbox.clicked() += [this, &checkbox](const controls::ButtonClickEvent&) {
         license_accepted = !license_accepted;
@@ -249,8 +255,9 @@ std::unique_ptr<UIElement> Wizard::build_options() {
     page->append_child(make_spacer());
 
     auto& summary = page->append_new_child<controls::Text>();
-    summary.set_text("Install path: " + install_path +
-                     "\nReady to begin installation.")
+    summary
+        .set_text("Install path: " + install_path +
+                  "\nReady to begin installation.")
         .set_type(controls::TextType::Primary);
 
     return page;
@@ -322,8 +329,9 @@ std::unique_ptr<UIElement> Wizard::build_complete() {
         .set_type(controls::TextType::Primary);
 
     auto& desc = page->append_new_child<controls::Text>();
-    desc.set_text("The application has been successfully installed.\n"
-                  "Click Finish to exit the wizard.")
+    desc.set_text(
+            "The application has been successfully installed.\n"
+            "Click Finish to exit the wizard.")
         .set_type(controls::TextType::Primary);
 
     return page;
@@ -337,13 +345,26 @@ void Wizard::switch_page(int step) {
 
     std::unique_ptr<UIElement> page;
     switch (step) {
-        case Step::Welcome:   page = build_welcome();   break;
-        case Step::License:   page = build_license();   break;
-        case Step::Directory: page = build_directory(); break;
-        case Step::Options:   page = build_options();   break;
-        case Step::Progress:  page = build_progress();  break;
-        case Step::Complete:  page = build_complete();  break;
-        default: return;
+        case Step::Welcome:
+            page = build_welcome();
+            break;
+        case Step::License:
+            page = build_license();
+            break;
+        case Step::Directory:
+            page = build_directory();
+            break;
+        case Step::Options:
+            page = build_options();
+            break;
+        case Step::Progress:
+            page = build_progress();
+            break;
+        case Step::Complete:
+            page = build_complete();
+            break;
+        default:
+            return;
     }
     page_area_->append_child(std::move(page));
     update_nav_buttons();
@@ -387,23 +408,39 @@ void Wizard::update_nav_buttons() {
 
 void Wizard::on_next() {
     switch (current_step_) {
-        case Step::Welcome:   switch_page(Step::License);   break;
-        case Step::License:   switch_page(Step::Directory); break;
-        case Step::Directory: switch_page(Step::Options);   break;
-        case Step::Options:   start_installation();         break;
+        case Step::Welcome:
+            switch_page(Step::License);
+            break;
+        case Step::License:
+            switch_page(Step::Directory);
+            break;
+        case Step::Directory:
+            switch_page(Step::Options);
+            break;
+        case Step::Options:
+            start_installation();
+            break;
         case Step::Complete:
             platform::Application::current_dispatcher().request_quit(0);
             break;
-        default: break;
+        default:
+            break;
     }
 }
 
 void Wizard::on_back() {
     switch (current_step_) {
-        case Step::License:   switch_page(Step::Welcome);   break;
-        case Step::Directory: switch_page(Step::License);   break;
-        case Step::Options:   switch_page(Step::Directory); break;
-        default: break;
+        case Step::License:
+            switch_page(Step::Welcome);
+            break;
+        case Step::Directory:
+            switch_page(Step::License);
+            break;
+        case Step::Options:
+            switch_page(Step::Directory);
+            break;
+        default:
+            break;
     }
 }
 
@@ -422,35 +459,47 @@ void Wizard::start_installation() {
 // ---- build root UI ----
 
 std::unique_ptr<UIElement> Wizard::build() {
-    auto root = std::make_unique<controls::StackPanel>();
-    root->set_orientation(controls::Orientation::Vertical);
+    auto root = std::make_unique<UIElement>();
     root->configure_layout([](layout::LayoutElement& item) {
-        item.set_size(layout::Length::percent(100.0F),
-                      layout::Length::percent(100.0F));
+        item.set_flex_direction(layout::FlexDirection::Column);
     });
 
-    // Separator line at top
-    auto& top_line = root->append_new_child<UIElement>();
-    top_line.set_height(1.0F);
-    top_line.set_background(rendering::Color::rgba(228, 231, 237));
+    auto& header = root->append_new_child<UIElement>();
+    header.set_background(rendering::Color::rgba(0x40, 0x9c, 0x00));
+    header.configure_layout([](layout::LayoutElement& item) {
+        item.set_height(layout::Length::points(80.0F));
+    });
 
-    // Page content area
-    auto& page_area = root->append_new_child<controls::StackPanel>();
-    page_area.configure_layout(
-        [](layout::LayoutElement& item) { item.set_flex(1.0F); });
-    page_area.set_overflow(layout::Overflow::Hidden);
-    page_area_ = &page_area;
+    auto& body = root->append_new_child<UIElement>();
+    body.set_background(rendering::Color::rgba(255, 255, 255));
+    body.configure_layout(
+        [](layout::LayoutElement& item) 
+        { 
+            item.set_flex(1.0F); 
+            item.set_align_items(layout::Align::FlexStart);
+            item.set_flex_direction(layout::FlexDirection::Column);
+            item.set_justify_content(layout::JustifyContent::FlexStart);
+        });
 
-    // Footer separator
-    auto& bot_line = root->append_new_child<UIElement>();
-    bot_line.set_height(1.0F);
-    bot_line.set_background(rendering::Color::rgba(228, 231, 237));
+    auto& button = body.append_new_child<controls::Button>();
+    button.set_text("Start Installation")
+        .set_type(controls::ButtonType::Primary)
+        .set_size(controls::ButtonSize::Large);
 
-    // Footer
-    root->append_child(build_footer());
+    button.configure_layout([](layout::LayoutElement& item) {
+        item.set_align_self(layout::Align::Center);
+        item.set_height(layout::Length::points(20.0F));
+    });
+    button.clicked() += [this](const controls::ButtonClickEvent& event) 
+    { 
+        MessageBoxA(nullptr, "Installation started!", "Installer", MB_OK | MB_ICONINFORMATION);
+    };
 
-    // Show initial page
-    switch_page(Step::Welcome);
+    auto& tail = root->append_new_child<UIElement>();
+    tail.set_background(rendering::Color::rgba(0x25, 0x25, 0x25));
+    tail.configure_layout([](layout::LayoutElement& item) {
+        item.set_height(layout::Length::points(20.0F));
+    });
 
     return root;
 }

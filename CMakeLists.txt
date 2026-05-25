@@ -53,8 +53,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     WinElement::winelement
 )
 
-# 测试
-option(BUILD_TESTING "Build tests" ON)
+# 测试（默认关闭，通过 -DBUILD_TESTING=ON 启用）
+option(BUILD_TESTING "Build tests" OFF)
 if(BUILD_TESTING)
     enable_testing()
     add_subdirectory(tests)
